@@ -2,15 +2,16 @@
 
 # general dependencies:
 #    bash (to run this script)
-#    util-linux (for getopt)
 #    procps or procps-ng
-#    hostapd
 #    iproute2
+#    dnsmasq
+#    iptables
+
+#    hostapd
 #    iw
 #    iwconfig (you only need this if 'iw' can not recognize your adapter)
 #    haveged (optional)
-#    dnsmasq
-#    iptables
+
 
 VERSION=0.5.0
 PROGNAME="$(basename $0)"
@@ -44,9 +45,9 @@ usage() {
     echo "  --tp <port>             Transparent proxy (redsocks), redirect tcp and udp traffic to port."
     echo "                          Usually use with --dns-proxy"
     echo 
-    echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
+    echo "  -g <gateway>            Set Gateway IPv4 address, netmask is /24 (default: 192.168.18.1)"
     echo "  --dns-proxy <port>      Redirect 53 port to DNS proxy port. dnsmasq DNS is disabled"
-    echo "  --no-dnsmasq-dns        dnsmasq DNS disabled"
+    echo "  --no-serve-dns          dnsmasq DNS disabled"
     echo "  --no-dnsmasq            Disable dnsmasq server completely (dhcp and dns)"
     echo "  --log-dns               Show dnsmasq DNS server query log"
     echo "  --dhcp-dns <IP1[,IP2]>|no"
@@ -57,12 +58,17 @@ usage() {
     echo "  --mac <MAC>             Set MAC address"
     echo 
     echo " Wifi hotspot options:"
-    echo "  --ap <wifi-interface> <access-point-name>"
-    echo "                          Create Wifi access point"
+    echo "  --ap <wlan card interface> <access point name>"
+    echo "                          Create Wifi access point using wlan card, and set SSID"
     echo "  --password <passphrase> Wifi password"
     echo 
     echo "  --hidden                Make the Access Point hidden (do not broadcast the SSID)"
+    echo "  --no-virt               Do not create virtual interface. "
+    echo "                          Using this you can't use same wlan card as Internet and AP"
     echo "  -c <channel>            Channel number (default: 1)"
+    echo "  --country <code>        Set two-letter country code for regularity (example: US)"
+    echo "  --freq-band <GHz>       Set frequency band. Valid inputs: 2.4, 5 (default: 2.4)"
+    echo "  --driver                Choose your WiFi adapter driver (default: nl80211)"
     echo "  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)"
     echo "  --psk                   Use 64 hex digits pre-shared-key instead of passphrase"
     echo "  --mac-filter            Enable Wifi hotspot MAC address filtering"
@@ -73,30 +79,23 @@ usage() {
     echo "  --ieee80211ac           Enable IEEE 802.11ac (VHT)"
     echo "  --ht_capab <HT>         HT capabilities (default: [HT40+])"
     echo "  --vht_capab <VHT>       VHT capabilities"
-    echo "  --country <code>        Set two-letter country code for regularity (example: US)"
-    echo "  --freq-band <GHz>       Set frequency band. Valid inputs: 2.4, 5 (default: 2.4)"
-    echo "  --driver                Choose your WiFi adapter driver (default: nl80211)"
-    echo "  --no-virt               Do not create virtual interface"
     echo "  --no-haveged            Do not run 'haveged' automatically when needed"
     echo "  --fix-unmanaged         If NetworkManager shows your interface as unmanaged after you"
     echo "                          close lnxrouter, then use this option to switch your interface"
     echo "                          back to managed"
     echo
-    echo " Instant managing:"
+    echo " Instance managing:"
     echo "  --daemon                Run lnxrouter in the background"
     echo "  --stop <id>             Send stop command to an already running lnxrouter. For an <id>"
-    echo "                          you can put the PID of lnxrouter or the WiFi interface. You can"
+    echo "                          you can put the PID of lnxrouter or interface. You can"
     echo "                          get them with --list-running"
     echo "  --list-running          Show the lnxrouter processes that are already running"
     echo "  --list-clients <id>     List the clients connected to lnxrouter instance associated with <id>."
-    echo "                          For an <id> you can put the PID of lnxrouter or the WiFi interface."
+    echo "                          For an <id> you can put the PID of lnxrouter or interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
 
     echo
-    echo "Useful informations:"
-    echo "  * If you're not using the --no-virt option, then you can create an AP with the same"
-    echo "    interface you are getting your Internet connection."
     echo
     echo "Examples:"
     echo "  "$PROGNAME" --ap wlan0 MyAccessPoint --password MyPassPhrase"
@@ -198,7 +197,7 @@ while [[ -n "$1" ]]; do
             TP_DNS_PORT="$1"
             shift
             ;;
-        --no-dnsmasq-dns)
+        --no-serve-dns)
             shift
             dnsmasq_NO_DNS=1
             ;;
@@ -1048,7 +1047,7 @@ list_running_conf() {
     local x
     mutex_lock
     for x in /tmp/lnxrouter.*; do
-        if [[ -f $x/pid && -f $x/wifi_iface && -d /proc/$(cat $x/pid) ]]; then
+        if [[ -f $x/pid && -f $x/subn_iface && -d /proc/$(cat $x/pid) ]]; then
             echo $x
         fi
     done
@@ -1056,27 +1055,27 @@ list_running_conf() {
 }
 
 list_running() {
-    local IFACE wifi_iface x
+    local IFACE subn_iface x
     mutex_lock
     for x in $(list_running_conf); do
         IFACE=${x#*.}
         IFACE=${IFACE%%.*}
-        wifi_iface=$(cat $x/wifi_iface)
+        subn_iface=$(cat $x/subn_iface)
 
-        if [[ $IFACE == $wifi_iface ]]; then
+        if [[ $IFACE == $subn_iface ]]; then
             echo $(cat $x/pid) $IFACE
         else
-            echo $(cat $x/pid) $IFACE '('$(cat $x/wifi_iface)')'
+            echo $(cat $x/pid) $IFACE '('$(cat $x/subn_iface)')'
         fi
     done
     mutex_unlock
 }
 
-get_wifi_iface_from_pid() {
+get_subn_iface_from_pid() {
     list_running | awk '{print $1 " " $NF}' | tr -d '\(\)' | grep -E "^${1} " | cut -d' ' -f2
 }
 
-get_pid_from_wifi_iface() {
+get_pid_from_subn_iface() {
     list_running | awk '{print $1 " " $NF}' | tr -d '\(\)' | grep -E " ${1}$" | cut -d' ' -f1
 }
 
@@ -1109,27 +1108,27 @@ print_client() {
 }
 
 list_clients() {
-    local wifi_iface pid
+    local subn_iface pid
 
     # If PID is given, get the associated wifi iface
     if [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
         pid="$1"
-        wifi_iface=$(get_wifi_iface_from_pid "$pid")
-        [[ -z "$wifi_iface" ]] && die "'$pid' is not the pid of a running $PROGNAME instance."
+        subn_iface=$(get_subn_iface_from_pid "$pid")
+        [[ -z "$subn_iface" ]] && die "'$pid' is not the pid of a running $PROGNAME instance."
     fi
 
-    [[ -z "$wifi_iface" ]] && wifi_iface="$1"
-    is_wifi_interface "$wifi_iface" || die "'$wifi_iface' is not a WiFi interface."
+    [[ -z "$subn_iface" ]] && subn_iface="$1"
+    is_wifi_interface "$subn_iface" || die "'$subn_iface' is not a WiFi interface."
 
-    [[ -z "$pid" ]] && pid=$(get_pid_from_wifi_iface "$wifi_iface")
-    [[ -z "$pid" ]] && die "'$wifi_iface' is not used from $PROGNAME instance.\n\
+    [[ -z "$pid" ]] && pid=$(get_pid_from_subn_iface "$subn_iface")
+    [[ -z "$pid" ]] && die "'$subn_iface' is not used from $PROGNAME instance.\n\
        Maybe you need to pass the virtual interface instead.\n\
        Use --list-running to find it out."
     [[ -z "$CONFDIR" ]] && CONFDIR=$(get_confdir_from_pid "$pid")
 
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         local awk_cmd='($1 ~ /Station$/) {print $2}'
-        local client_list=$(iw dev "$wifi_iface" station dump | awk "$awk_cmd")
+        local client_list=$(iw dev "$subn_iface" station dump | awk "$awk_cmd")
 
         if [[ -z "$client_list" ]]; then
             echo "No clients connected"
@@ -1429,8 +1428,8 @@ else
 fi
 
 mutex_lock
-echo $AP_IFACE > $CONFDIR/wifi_iface
-chmod 444 $CONFDIR/wifi_iface
+echo $AP_IFACE > $CONFDIR/subn_iface
+chmod 444 $CONFDIR/subn_iface
 mutex_unlock
 
 if [[ -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
