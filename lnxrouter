@@ -811,7 +811,7 @@ _cleanup() {
 
     ip addr flush ${SUBNET_IFACE}
     
-    if [[ $IPV6 -eq 1 ]]; then
+    if [[ -d $CONFDIR/sys_6_conf_iface ]]; then
         cp -f $CONFDIR/sys_6_conf_iface/* /proc/sys/net/ipv6/conf/$SUBNET_IFACE/
     fi
     rm -rf $CONFDIR
@@ -1501,8 +1501,9 @@ if [[ $WIFI_IFACE ]]; then
 fi
 
 ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IP"
+
+mkdir $CONFDIR/sys_6_conf_iface
 if [[ $IPV6 -eq 1 ]]; then
-    mkdir $CONFDIR/sys_6_conf_iface
     cp /proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra     \
         /proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr  \
         /proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode \
@@ -1513,6 +1514,9 @@ if [[ $IPV6 -eq 1 ]]; then
     echo 0 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode
     
     ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6"
+else
+    cp /proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6  $CONFDIR/sys_6_conf_iface/
+    echo 1 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6
 fi
 
 # enable Internet sharing
