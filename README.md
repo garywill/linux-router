@@ -309,7 +309,6 @@ Wifi hotspot:
 
 - Option to ban private network access
 - Option to randomize MAC
-- Option to redirect all DNS traffic
 
 ## Donate
 
