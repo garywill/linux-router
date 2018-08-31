@@ -364,8 +364,19 @@ get_avail_fd() {
     echo 0
 }
 
+if [[ -d /dev/shm ]]; then
+    TMPDIR=/dev/shm
+elif [[ -d /run/shm ]]; then
+    TMPDIR=/run/shm
+else
+    TMPDIR=/tmp
+fi
+mkdir -p $TMPDIR/lnxrouter_tmpfiles
+TMPDIR=$TMPDIR/lnxrouter_tmpfiles
+chmod 777 $TMPDIR 2>/dev/null
+
 # lock file for the mutex counter
-COUNTER_LOCK_FILE=/tmp/lnxrouter.$$.lock
+COUNTER_LOCK_FILE=$TMPDIR/lnxrouter.$$.lock
 
 cleanup_lock() {
     rm -f $COUNTER_LOCK_FILE
@@ -1048,7 +1059,7 @@ clean_exit() {
 list_running_conf() {
     local x
     mutex_lock
-    for x in /tmp/lnxrouter.*; do
+    for x in $TMPDIR/lnxrouter.*; do
         if [[ -f $x/pid && -f $x/subn_iface && -d /proc/$(cat $x/pid) ]]; then
             echo $x
         fi
@@ -1169,7 +1180,7 @@ has_running_instance() {
     local PID x
 
     mutex_lock
-    for x in /tmp/lnxrouter.*; do
+    for x in $TMPDIR/lnxrouter.*; do
         if [[ -f $x/pid ]]; then
             PID=$(cat $x/pid)
             if [[ -d /proc/$PID ]]; then
@@ -1384,8 +1395,8 @@ echo "Target interface is ${TARGET_IFACE}"
 
 mutex_lock
 trap "cleanup" EXIT
-CONFDIR=$(mktemp -d /tmp/lnxrouter.${TARGET_IFACE}.conf.XXXXXXXX)
-echo "Config dir: $CONFDIR"
+CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXXXXXXX)
+#echo "Config dir: $CONFDIR"
 echo "PID: $$"
 echo $$ > $CONFDIR/pid
 
@@ -1394,7 +1405,7 @@ echo $$ > $CONFDIR/pid
 chmod 755 $CONFDIR
 chmod 444 $CONFDIR/pid
 
-COMMON_CONFDIR=/tmp/lnxrouter.common.conf
+COMMON_CONFDIR=$TMPDIR/lnxrouter.common.conf
 mkdir -p $COMMON_CONFDIR
 
 cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
