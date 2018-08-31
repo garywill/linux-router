@@ -68,6 +68,7 @@ usage() {
     echo "                          For an <id> you can put the PID of create_ap or the WiFi interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
+    echo "  --log-dns"
     echo "  --no-dns                Disable dnsmasq DNS server"
     echo "  --no-dnsmasq            Disable dnsmasq server completely"
     echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
@@ -629,6 +630,8 @@ SUBNET_IFACE=
 
 HAVEGED_WATCHDOG_PID=
 
+SHOW_DNS_QUERY=0
+
 start_nat() {
     iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
     iptables -w -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
@@ -1084,6 +1087,10 @@ while [[ -n "$1" ]]; do
             PASSPHRASE="$1"
             shift
             ;;
+        --log-dns)
+            shift
+            SHOW_DNS_QUERY=1
+            ;;
         --)
             shift
             break
@@ -1431,6 +1438,8 @@ else
     echo "Warning: Wifi is not protected by password" >&2
 fi
 
+SUBNET_IFACE=${AP_IFACE}
+
 if [[ $NO_DNSMASQ -eq 0 ]]; then
     # dnsmasq config (dhcp + dns)
     DNSMASQ_VER=$(dnsmasq -v | grep -m1 -oE '[0-9]+(\.[0-9]+)*\.[0-9]+')
@@ -1443,17 +1452,31 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     if [[ "$DHCP_DNS" == "gateway" ]]; then
         DHCP_DNS="$GATEWAY"
     fi
+    if [[ "$NO_DNS" -eq 0 ]]; then
+        dnsmasq_dns_option="dhcp-option-force=option:dns-server,${DHCP_DNS}"
+    else
+        dnsmasq_dns_option="port=0"
+    fi
     cat << EOF > $CONFDIR/dnsmasq.conf
+user=nobody
+group=nobody
+$DNSMASQ_BIND
 listen-address=${GATEWAY}
-${DNSMASQ_BIND}
+interface=$SUBNET_IFACE
+except-interface=*
+no-dhcp-interface=lo
 dhcp-range=${GATEWAY%.*}.1,${GATEWAY%.*}.254,255.255.255.0,24h
 dhcp-option-force=option:router,${GATEWAY}
-dhcp-option-force=option:dns-server,${DHCP_DNS}
+${dnsmasq_dns_option}
 EOF
     MTU=1280 # TODO temporary value. This used to be read from the INTERNET_IFACE
     [[ -n "$MTU" ]] && echo "dhcp-option-force=option:mtu,${MTU}" >> $CONFDIR/dnsmasq.conf
     [[ $ETC_HOSTS -eq 0 ]] && echo no-hosts >> $CONFDIR/dnsmasq.conf
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
+    if [[ ! "$SHOW_DNS_QUERY" -eq 0 ]]; then
+        echo log-queries=extra >> $CONFDIR/dnsmasq.conf
+        echo log-facility=/dev/stdout >> $CONFDIR/dnsmasq.conf
+    fi
 fi
 
 # initialize WiFi interface
@@ -1472,7 +1495,7 @@ fi
 ip link set up dev ${AP_IFACE} || die "$VIRTDIEMSG"
 ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${AP_IFACE} || die "$VIRTDIEMSG"
 
-SUBNET_IFACE=${AP_IFACE}
+
 # enable Internet sharing
 if [[ "$SHARE_METHOD" != "none" ]]; then
     echo "Sharing Internet using method: $SHARE_METHOD"
@@ -1503,7 +1526,7 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     fi
 
     umask 0033
-    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases || die & 
+    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases -u nobody -g nobody|| die & 
     umask $SCRIPT_UMASK
 fi
 
