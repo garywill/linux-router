@@ -22,7 +22,7 @@ usage() {
     echo "  -i <interface>          Interface to share Internet to. An NATed subnet is made upon it."
     echo "                          To create Wifi hotspot use '--ap' instead"
     echo "  -n                      Disable Internet sharing"
-    echo "  --tp <port>             Transparent proxy (redsocks), redirect tcp and udp traffic to port."
+    echo "  --tp <port>             Transparent proxy, redirect non-LAN tcp and udp traffic to port."
     echo "                          Usually use with --dns-proxy"
     echo 
     echo "  -g <gateway>            Set Gateway IPv4 address, netmask is /24 (default: 192.168.18.1)"
@@ -343,23 +343,6 @@ done
 #  0 if v1 (1st argument) and v2 (2nd argument) are the same
 #  1 if v1 is less than v2
 #  2 if v1 is greater than v2
-version_cmp() {
-    local V1 V2 VN x
-    [[ ! $1 =~ ^[0-9]+(\.[0-9]+)*$ ]] && die "Wrong version format!"
-    [[ ! $2 =~ ^[0-9]+(\.[0-9]+)*$ ]] && die "Wrong version format!"
-
-    V1=( $(echo $1 | tr '.' ' ') )
-    V2=( $(echo $2 | tr '.' ' ') )
-    VN=${#V1[@]}
-    [[ $VN -lt ${#V2[@]} ]] && VN=${#V2[@]}
-
-    for ((x = 0; x < $VN; x++)); do
-        [[ ${V1[x]} -lt ${V2[x]} ]] && return 1
-        [[ ${V1[x]} -gt ${V2[x]} ]] && return 2
-    done
-
-    return 0
-}
 
 #=========
 
@@ -556,8 +539,6 @@ NM_RUNNING=0
 NM_UNM_LIST=
 if (which nmcli >/dev/null 2>&1 ) && (nmcli -t -f RUNNING g 2>&1 | grep -E '^running$' >/dev/null 2>&1 ) ; then
     NM_RUNNING=1
-    NM_VER=$(nmcli -v | grep -m1 -oE '[0-9]+(\.[0-9]+)*\.[0-9]+')
-    version_cmp $NM_VER 0.9.9 && echo "Warning: NetworkManager need >=0.9.9 or you may encounter problems"
 fi
 
 nm_knows() {
@@ -660,7 +641,7 @@ unredirect_dns() {
 
 start_redsocks() {
     echo
-    echo "iptables: redirect all TCP and UDP traffic to transparent proxy port ${TP_PORT}"
+    echo "iptables: transparent proxy non-LAN TCP/UDP traffic to port ${TP_PORT}"
     iptables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
@@ -735,9 +716,9 @@ _cleanup() {
             rm -f $COMMON_CONFDIR/ip_forward
         fi
 
-
-        rm -rf $COMMON_CONFDIR
-        rm -rf $TMPDIR
+        rm -d $COMMON_CONFDIR/ifaces
+        rm -d $COMMON_CONFDIR
+        rm -d $TMPDIR
     else
         echo "Exiting: This is NOT the only running instance"
     fi
@@ -962,6 +943,15 @@ if [[ $SHARE_METHOD == 'none' ]]; then
     dnsmasq_NO_DNS=1
 fi
 
+if [[ -d /dev/shm ]]; then
+    TMPDIR=/dev/shm
+elif [[ -d /run/shm ]]; then
+    TMPDIR=/run/shm
+else
+    TMPDIR=/tmp
+fi
+TMPDIR=$TMPDIR/lnxrouter_tmp
+
 #======
 
 if [[ $LIST_RUNNING -eq 1 ]]; then
@@ -1093,7 +1083,8 @@ if [[ $CONN_IFACE ]]; then
 elif [[ $WIFI_IFACE ]]; then
     TARGET_IFACE=$WIFI_IFACE
 else
-    die "No target interface specified"
+    echo "No target interface specified" 1>&2
+    exit 1
 fi
 echo "Target interface is ${TARGET_IFACE}"
 
@@ -1104,16 +1095,7 @@ trap "cleanup" EXIT
 trap "clean_exit" SIGINT SIGUSR1 SIGTERM
 trap "die" SIGUSR2
 
-
-if [[ -d /dev/shm ]]; then
-    TMPDIR=/dev/shm
-elif [[ -d /run/shm ]]; then
-    TMPDIR=/run/shm
-else
-    TMPDIR=/tmp
-fi
-mkdir -p $TMPDIR/lnxrouter_tmp
-TMPDIR=$TMPDIR/lnxrouter_tmp
+mkdir -p $TMPDIR
 chmod 755 $TMPDIR 2>/dev/null
 
 CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)
@@ -1283,18 +1265,10 @@ fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
     # dnsmasq config (dhcp + dns)
-    DNSMASQ_VER=$(dnsmasq -v | grep -m1 -oE '[0-9]+(\.[0-9]+)*\.[0-9]+')
-    version_cmp $DNSMASQ_VER 2.63
-    if [[ $? -eq 1 ]]; then
-        DNSMASQ_BIND=bind-interfaces
-    else
-        DNSMASQ_BIND=bind-dynamic
-    fi
-    
     cat << EOF > $CONFDIR/dnsmasq.conf
 user=nobody
 group=nobody
-${DNSMASQ_BIND}
+bind-dynamic
 listen-address=${GATEWAY}
 interface=$SUBNET_IFACE
 except-interface=*
