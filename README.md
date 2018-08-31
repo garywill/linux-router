@@ -161,63 +161,75 @@ On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP
 Usage: lnxrouter [options] 
 
 Options:
-  -h, --help              Show this help
-  --version               Print version number
+    -h, --help              Show this help
+    --version               Print version number
 
-  -i <interface>          Interface to share Internet to. An NATed subnet is made upon it.
-                          To create Wifi hotspot use '--ap' instead
-  -n                      Disable Internet sharing
-  --tp <port>             Transparent proxy, redirect non-LAN tcp and udp traffic to port.
-                          Usually use with --dns-proxy
+    -i <interface>          Interface to share Internet to.
+                            An NATed subnet is made upon it.
+                            To create Wifi hotspot use '--ap' instead
+    -n                      Disable Internet sharing
+    --tp <port>             Transparent proxy.
+                            redirect non-LAN tcp and udp traffic to port.
+                            Usually used with '--dns-proxy'
+    
+    -g <gateway>            Set gateway IPv4 address, netmask is /24 .
+                            (default: 192.168.18.1)
+    -6                      Enable IPv6 (NAT)
+    --p6 <prefix>           Set IPv6 prefix (length 64)
+                            (default: fd00:1:1:1:: )
+    --dns-proxy <port>      DNS server redirect queries to port
+    --no-serve-dns          Disable DNS server
+    --no-dnsmasq            Disable dnsmasq server completely (DHCP, DNS, RA)
+    --log-dns               Show DNS server query log
+    --dhcp-dns <IP1[,IP2]>|no
+                            Set IPv4 DNS offered by DHCP 
+                            (default: gateway as DNS)
+    --dhcp-dns6 <IP1[,IP2]>|no
+                            Set IPv6 DNS offered by DHCP(RA) 
+                            (default: gateway as DNS)
+                            Note IPv6 addresses need '[]' around
+    -d                      DNS server will take into account /etc/hosts
+    -e <hosts_file>         DNS server will take into account additional 
+                            hosts file
+    
+    --mac <MAC>             Set MAC address
+ 
+  Wifi hotspot options:
+    --ap <wifi interface> <SSID>
+                            Create Wifi access point
+    --password <password>   Wifi password
+    
+    --hidden                Hide access point (not broadcast SSID)
+    --no-virt               Do not create virtual interface
+                            Using this you can't use same wlan interface
+                            for both Internet and AP
+    -c <channel>            Channel number (default: 1)
+    --country <code>        Set two-letter country code for regularity
+                            (example: US)
+    --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
+    --driver                Choose your WiFi adapter driver (default: nl80211)
+    -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both
+                            (default: 1+2)
+    --psk                   Use 64 hex digits pre-shared-key instead of
+                            passphrase
+    --mac-filter            Enable Wifi hotspot MAC address filtering
+    --mac-filter-accept     Location of Wifi hotspot MAC address filter list
+                            (defaults to /etc/hostapd/hostapd.accept)
+    --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
+    --isolate-clients       Disable wifi communication between clients
+    --ieee80211n            Enable IEEE 802.11n (HT)
+    --ieee80211ac           Enable IEEE 802.11ac (VHT)
+    --ht_capab <HT>         HT capabilities (default: [HT40+])
+    --vht_capab <VHT>       VHT capabilities
+    --no-haveged            Do not run haveged automatically when needed
 
-  -g <gateway>            Set gateway IPv4 address, netmask is /24 (default: 192.168.18.1)
-  -6                      Enable IPv6
-  --p6 <prefix>           Set IPv6 prefix (length 64) (default: fd00:1:1:1:: )
-  --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port. DNS server is disabled
-  --no-serve-dns          Disable DNS server
-  --no-dnsmasq            Disable dnsmasq server completely (DHCP and DNS)
-  --log-dns               Show DNS server query log
-  --dhcp-dns <IP1[,IP2]>|no
-                          Set IPv4 DNS offered by DHCP (default: gateway as DNS)
-  -d                      DNS server will take into account /etc/hosts
-  -e <hosts_file>         DNS server will take into account additional hosts file
-
-  --mac <MAC>             Set MAC address
-
- Wifi hotspot options:
-  --ap <wlan card interface> <access point name>
-                          Create Wifi access point using wlan card, and set SSID
-  --password <passphrase> Wifi password
-
-  --hidden                Make the Access Point hidden (do not broadcast the SSID)
-  --no-virt               Do not create virtual interface. 
-                          Using this you can't use same wlan card as Internet and AP
-  -c <channel>            Channel number (default: 1)
-  --country <code>        Set two-letter country code for regularity (example: US)
-  --freq-band <GHz>       Set frequency band. Valid inputs: 2.4, 5 (default: 2.4)
-  --driver                Choose your WiFi adapter driver (default: nl80211)
-  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)
-  --psk                   Use 64 hex digits pre-shared-key instead of passphrase
-  --mac-filter            Enable Wifi hotspot MAC address filtering
-  --mac-filter-accept     Location of Wifi hotspot MAC address filter list (defaults to /etc/hostapd/hostapd.accept)
-  --hostapd-debug <level> With level between 1 and 2, passes arguments -d or -dd to hostapd for debugging.
-  --isolate-clients       Disable communication between clients
-  --ieee80211n            Enable IEEE 802.11n (HT)
-  --ieee80211ac           Enable IEEE 802.11ac (VHT)
-  --ht_capab <HT>         HT capabilities (default: [HT40+])
-  --vht_capab <VHT>       VHT capabilities
-  --no-haveged            Do not run 'haveged' automatically when needed
-
- Instance managing:
-  --daemon                Run lnxrouter in the background
-  --list-running          Show the lnxrouter processes that are already running
-  --stop <id>             Send stop command to an already running lnxrouter. For an <id>
-                          you can put the PID of lnxrouter or interface. You can
-                          get them with --list-running
-  --list-clients <id>     List the clients connected to lnxrouter instance associated with <id>.
-                          For an <id> you can put the PID of lnxrouter or interface.
-                          If virtual WiFi interface was created, then use that one.
-                          You can get them with --list-running
+  Instance managing:
+    --daemon                Run in background
+    --list-running          Show running instances
+    --list-clients <id>     List clients of an instance
+    --stop <id>             Stop a running instance
+        For <id> you can use PID or subnet interface name.
+        You can get them with '--list-running'
 ```
 
 

@@ -31,8 +31,7 @@ Options:
     -6                      Enable IPv6 (NAT)
     --p6 <prefix>           Set IPv6 prefix (length 64)
                             (default: fd00:1:1:1:: )
-    --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port.
-                            DNS server is disabled
+    --dns-proxy <port>      DNS server redirect queries to port
     --no-serve-dns          Disable DNS server
     --no-dnsmasq            Disable dnsmasq server completely (DHCP, DNS, RA)
     --log-dns               Show DNS server query log
@@ -671,42 +670,6 @@ stop_dhcp() {
     fi
 }
 
-redirect_dns() {
-    echo
-    echo "iptables: redirect port 53 to ${TP_DNS_PORT}"
-    # allow input to  dns proxy port
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT || die
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT || die
-    # redirect 53 to dns proxy
-    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
-    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
-    
-    if [[ $IPV6 -eq 1 ]]; then
-        # allow input to  dns proxy port
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT || die
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT || die
-        # redirect 53 to dns proxy
-        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
-        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die  
-    fi
-}
-unredirect_dns() {
-    echo "iptables: stop dns proxy "
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
-
-    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
-    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
-    
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
-
-        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
-        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
-    fi
-}
-
 start_redsocks() {
     echo
     echo "iptables: transparent proxy non-LAN TCP/UDP traffic to port ${TP_PORT}"
@@ -829,9 +792,6 @@ clean_iptables() {
         unallow_dns_port
     fi
     
-    if [[ "$TP_DNS_PORT" ]]; then
-        unredirect_dns
-    fi
     
     if [[ $NO_DNSMASQ -eq 0 ]]; then
         stop_dhcp
@@ -1026,9 +986,6 @@ if [[ $TP_PORT ]]; then
     SHARE_METHOD=redsocks
 fi
 
-if [[ $TP_DNS_PORT ]]; then
-    dnsmasq_NO_DNS=1
-fi
 
 if [[ $SHARE_METHOD == 'none' ]]; then
     dnsmasq_NO_DNS=1
@@ -1398,6 +1355,14 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     if [[ ! "$SHOW_DNS_QUERY" -eq 0 ]]; then
         echo log-queries=extra >> $CONFDIR/dnsmasq.conf
     fi
+    
+    if [[ $TP_DNS_PORT ]]; then
+        cat <<- EOF >> $CONFDIR/dnsmasq.conf
+			no-resolv
+			no-poll
+			server=127.0.0.1#${TP_DNS_PORT}
+		EOF
+    fi
     if [[ $IPV6 -eq 1 ]];then
         cat <<- EOF  >> $CONFDIR/dnsmasq.conf
 			listen-address=${GATEWAY6}
@@ -1506,9 +1471,6 @@ if [[ "$DHCP_DNS" == "gateway" || "$DHCP_DNS6" == "gateway" ]]; then
     allow_dns_port
 fi
 
-if [[ "$TP_DNS_PORT" ]]; then
-    redirect_dns
-fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
     start_dhcp
