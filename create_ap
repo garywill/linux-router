@@ -627,6 +627,41 @@ SUBNET_IFACE=
 
 HAVEGED_WATCHDOG_PID=
 
+start_nat() {
+    iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
+    iptables -w -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    iptables -w -v -I FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+}
+stop_nat() {
+    iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
+    iptables -w -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
+    iptables -w -D FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT
+}
+
+start_dns() {
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
+    iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+        -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
+    iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+        -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
+}
+stop_dns() {
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
+    iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+        -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
+    iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+        -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
+}
+
+start_dhcp() {
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+}
+stop_dhcp() {
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+}
+
 _cleanup() {
     local PID x
 
@@ -670,28 +705,6 @@ _cleanup() {
 
         rm -rf $COMMON_CONFDIR
     fi
-
-    if [[ "$SHARE_METHOD" != "none" ]]; then
-        if [[ "$SHARE_METHOD" == "nat" ]]; then
-            iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
-            iptables -w -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
-            iptables -w -D FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT
-        fi
-    fi
-
-    
-    if [[ $NO_DNS -eq 0 ]]; then
-        iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
-        iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
-        iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-            -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-        iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-            -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-    fi
-    
-    if [[ $NO_DNSMASQ -eq 0 ]]; then
-        iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
-    fi
     
     ip link set down dev ${AP_IFACE}
     ip addr flush ${AP_IFACE}
@@ -710,9 +723,27 @@ _cleanup() {
     cleanup_lock
 }
 
+clean_iptables() {
+    if [[ "$SHARE_METHOD" != "none" ]]; then
+        if [[ "$SHARE_METHOD" == "nat" ]]; then
+            stop_nat
+        fi
+    fi
+
+    
+    if [[ $NO_DNS -eq 0 ]]; then
+        stop_dns
+    fi
+    
+    if [[ $NO_DNSMASQ -eq 0 ]]; then
+        stop_dhcp
+    fi
+}
+
 cleanup() {
     echo
     echo -n "Doing cleanup.. "
+    clean_iptables
     _cleanup > /dev/null 2>&1
     echo "done"
 }
@@ -1453,9 +1484,7 @@ SUBNET_IFACE=${AP_IFACE}
 if [[ "$SHARE_METHOD" != "none" ]]; then
     echo "Sharing Internet using method: $SHARE_METHOD"
     if [[ "$SHARE_METHOD" == "nat" ]]; then
-        iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
-        iptables -w -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-        iptables -w -v -I FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+        start_nat
         echo 1 > /proc/sys/net/ipv4/ip_forward || die
         # to enable clients to establish PPTP connections we must
         # load nf_nat_pptp module
@@ -1468,16 +1497,11 @@ fi
 # start dhcp + dns (optional)
 
 if [[ $NO_DNS -eq 0 ]]; then
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
-    iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-        -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
-    iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-        -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
+    start_dns
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+    start_dhcp
 
     if which complain > /dev/null 2>&1; then
         # openSUSE's apparmor does not allow dnsmasq to read files.
