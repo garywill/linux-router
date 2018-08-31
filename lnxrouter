@@ -30,19 +30,35 @@ usage() {
     echo "Options:"
     echo "  -h, --help              Show this help"
     echo "  --version               Print version number"
-    echo "  -c <channel>            Channel number (default: 1)"
-    echo "  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)"
+    
+
     echo "  -n                      Disable Internet sharing"
     echo "  -m <method>             Method for Internet sharing."
     echo "                          Use: 'nat' for NAT (default)"
     echo "                               'none' for no Internet sharing (equivalent to -n)"
+    
+    echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
+    echo "  --no-dnsmasq-dns        dnsmasq DNS disabled"
+    echo "  --no-dnsmasq            Disable dnsmasq server completely (dhcp and dns)"
+    echo "  --log-dns               Show dnsmasq DNS server query log"
+    echo "  --dhcp-dns <IP1[,IP2]>|no"
+    echo "                          Set DNS offered by DHCP, or no DNS offered (default: gateway as DNS)"
+    echo "  -d                      DNS server will take into account /etc/hosts"
+    echo "  -e <hosts_file>         DNS server will take into account additional hosts file"
+    
+    echo "  --mac <MAC>             Set MAC address"
+    
+    
     echo "  --ap <wifi-interface> <access-point-name>"
     echo "                          Create Wifi access point"
     echo "  --password <passphrase> Wifi password"
-    echo "  --psk                   Use 64 hex digits pre-shared-key instead of passphrase"
+    
     echo "  --hidden                Make the Access Point hidden (do not broadcast the SSID)"
-    echo "  --mac-filter            Enable MAC address filtering"
-    echo "  --mac-filter-accept     Location of MAC address filter list (defaults to /etc/hostapd/hostapd.accept)"
+    echo "  -c <channel>            Channel number (default: 1)"
+    echo "  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)"
+    echo "  --psk                   Use 64 hex digits pre-shared-key instead of passphrase"
+    echo "  --mac-filter            Enable Wifi hotspot MAC address filtering"
+    echo "  --mac-filter-accept     Location of Wifi hotspot MAC address filter list (defaults to /etc/hostapd/hostapd.accept)"
     echo "  --hostapd-debug <level> With level between 1 and 2, passes arguments -d or -dd to hostapd for debugging."
     echo "  --isolate-clients       Disable communication between clients"
     echo "  --ieee80211n            Enable IEEE 802.11n (HT)"
@@ -57,8 +73,8 @@ usage() {
     echo "  --fix-unmanaged         If NetworkManager shows your interface as unmanaged after you"
     echo "                          close create_ap, then use this option to switch your interface"
     echo "                          back to managed"
-    echo "  --mac <MAC>             Set MAC address"
-    echo "  --dhcp-dns <IP1[,IP2]>  Set DNS returned by DHCP"
+    
+
     echo "  --daemon                Run create_ap in the background"
     echo "  --stop <id>             Send stop command to an already running create_ap. For an <id>"
     echo "                          you can put the PID of create_ap or the WiFi interface. You can"
@@ -68,12 +84,7 @@ usage() {
     echo "                          For an <id> you can put the PID of create_ap or the WiFi interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
-    echo "  --log-dns"
-    echo "  --no-dns                Disable dnsmasq DNS server"
-    echo "  --no-dnsmasq            Disable dnsmasq server completely"
-    echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
-    echo "  -d                      DNS server will take into account /etc/hosts"
-    echo "  -e <hosts_file>         DNS server will take into account additional hosts file"
+
     echo
     echo "Useful informations:"
     echo "  * If you're not using the --no-virt option, then you can create an AP with the same"
@@ -590,7 +601,7 @@ WPA_VERSION=1+2
 ETC_HOSTS=0
 ADDN_HOSTS=
 DHCP_DNS=gateway
-NO_DNS=0
+dnsmasq_NO_DNS=0
 NO_DNSMASQ=0
 HIDDEN=0
 MAC_FILTER=0
@@ -643,11 +654,11 @@ stop_nat() {
     iptables -w -D FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT
 }
 
-start_dns() {
+allow_dns_port() {
     iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport 53 -j ACCEPT || die
     iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 53 -j ACCEPT || die
 }
-stop_dns() {
+unallow_dns_port() {
     iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport 53 -j ACCEPT
     iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 53 -j ACCEPT
 }
@@ -728,8 +739,8 @@ clean_iptables() {
     fi
 
     
-    if [[ $NO_DNS -eq 0 ]]; then
-        stop_dns
+    if [[ "$DHCP_DNS" == "gateway" ]]; then
+        unallow_dns_port
     fi
     
     if [[ $NO_DNSMASQ -eq 0 ]]; then
@@ -1055,9 +1066,9 @@ while [[ -n "$1" ]]; do
             shift
             USE_PSK=1
             ;;
-        --no-dns)
+        --no-dnsmasq-dns)
             shift
-            NO_DNS=1
+            dnsmasq_NO_DNS=1
             ;;
         --no-dnsmasq)
             shift
@@ -1095,15 +1106,14 @@ while [[ -n "$1" ]]; do
             shift
             break
             ;;
+        *)
+            die "Invalid parameter: $1"
+            ;;
     esac
 done
 
 
 
-# Set NO_DNS, if dnsmasq is disabled
-if [[ $NO_DNSMASQ -eq 1 ]]; then
-  NO_DNS=1
-fi
 
 trap "cleanup_lock" EXIT
 
@@ -1449,26 +1459,33 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     else
         DNSMASQ_BIND=bind-dynamic
     fi
-    if [[ "$DHCP_DNS" == "gateway" ]]; then
-        DHCP_DNS="$GATEWAY"
-    fi
-    if [[ "$NO_DNS" -eq 0 ]]; then
-        dnsmasq_dns_option="dhcp-option-force=option:dns-server,${DHCP_DNS}"
-    else
-        dnsmasq_dns_option="port=0"
-    fi
+    
     cat << EOF > $CONFDIR/dnsmasq.conf
 user=nobody
 group=nobody
-$DNSMASQ_BIND
+${DNSMASQ_BIND}
 listen-address=${GATEWAY}
 interface=$SUBNET_IFACE
 except-interface=*
 no-dhcp-interface=lo
 dhcp-range=${GATEWAY%.*}.1,${GATEWAY%.*}.254,255.255.255.0,24h
 dhcp-option-force=option:router,${GATEWAY}
-${dnsmasq_dns_option}
 EOF
+    if [[ "$DHCP_DNS" != "no" ]]; then
+        if [[ "$DHCP_DNS" == "gateway" ]]; then
+            dns_offer="$GATEWAY"
+        else
+            dns_offer="$DHCP_DNS"
+            dnsmasq_NO_DNS=1
+        fi
+        echo "dhcp-option-force=option:dns-server,${dns_offer}" >> $CONFDIR/dnsmasq.conf
+    else
+        dnsmasq_NO_DNS=1
+    fi
+    
+    if [[ ! "$dnsmasq_NO_DNS" -eq 0 ]]; then
+        echo "port=0"  >> $CONFDIR/dnsmasq.conf
+    fi
     MTU=1280 # TODO temporary value. This used to be read from the INTERNET_IFACE
     [[ -n "$MTU" ]] && echo "dhcp-option-force=option:mtu,${MTU}" >> $CONFDIR/dnsmasq.conf
     [[ $ETC_HOSTS -eq 0 ]] && echo no-hosts >> $CONFDIR/dnsmasq.conf
@@ -1512,8 +1529,8 @@ fi
 
 # start dhcp + dns (optional)
 
-if [[ $NO_DNS -eq 0 ]]; then
-    start_dns
+if [[ "$DHCP_DNS" == "gateway" ]]; then
+    allow_dns_port
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
