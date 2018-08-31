@@ -1,23 +1,8 @@
 #!/bin/bash
 
-# general dependencies:
-#    bash (to run this script)
-#    procps or procps-ng
-#    iproute2
-#    dnsmasq
-#    iptables
-#  wifi ap:
-#    hostapd
-#    iw
-#    iwconfig (you only need this if 'iw' can not recognize your adapter)
-#    haveged (optional)
-
-
 VERSION=0.5.0
 PROGNAME="$(basename $0)"
 
-# make sure that all command outputs are in english
-# so we can parse them correctly
 export LC_ALL=C
 
 # all new files and directories must be readable only by root.
@@ -26,9 +11,9 @@ SCRIPT_UMASK=0077
 umask $SCRIPT_UMASK
 
 usage() {
-    echo "$PROGNAME $VERSION (https://github.com/garywill/linux-router)"
+    echo "linux-router $VERSION (https://github.com/garywill/linux-router)"
     echo "Share your Linux's Internet access to other devices. "
-    echo "Work on wired, wireless and virtual networks."
+    echo "Works on wired, wireless and virtual networks."
     echo 
     echo "Usage: "$PROGNAME" [options] "
     echo
@@ -36,23 +21,17 @@ usage() {
     echo "  -h, --help              Show this help"
     echo "  --version               Print version number"
     echo
-
-    
-    #echo "  -m <method>             Method for Internet sharing."
-    #echo "                          Use: 'nat' for NAT (default)"
-    #echo "                               'redsocks' for transparent proxy. Usually use with --dns-proxy"
-    #echo "                               'none' for no Internet sharing (equivalent to -n)"
-    echo "  -i <interface>          Interface to share Internet to. An NATed subnet will be made on it."
-    echo "                          To create Wifi hotspot use --ap instead"
+    echo "  -i <interface>          Interface to share Internet to. An NATed subnet is made upon it."
+    echo "                          To create Wifi hotspot use '--ap' instead"
     echo "  -n                      Disable Internet sharing"
     echo "  --tp <port>             Transparent proxy (redsocks), redirect tcp and udp traffic to port."
     echo "                          Usually use with --dns-proxy"
     echo 
     echo "  -g <gateway>            Set Gateway IPv4 address, netmask is /24 (default: 192.168.18.1)"
-    echo "  --dns-proxy <port>      Redirect 53 port to DNS proxy port. dnsmasq DNS is disabled"
-    echo "  --no-serve-dns          dnsmasq DNS disabled"
-    echo "  --no-dnsmasq            Disable dnsmasq server completely (dhcp and dns)"
-    echo "  --log-dns               Show dnsmasq DNS server query log"
+    echo "  --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port. DNS server is disabled"
+    echo "  --no-serve-dns          Disable DNS server"
+    echo "  --no-dnsmasq            Disable dnsmasq server completely (DHCP and DNS)"
+    echo "  --log-dns               Show DNS server query log"
     echo "  --dhcp-dns <IP1[,IP2]>|no"
     echo "                          Set DNS offered by DHCP, or no DNS offered (default: gateway as DNS)"
     echo "  -d                      DNS server will take into account /etc/hosts"
@@ -883,12 +862,12 @@ iptables_()
 start_nat() {
     echo
     echo "iptables: NAT "
-    iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE || die
+    iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
     iptables_ -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
     iptables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
 }
 stop_nat() {
-    iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE
+    iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
     iptables_ -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
     iptables_ -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
 }
@@ -1043,10 +1022,11 @@ clean_iptables() {
 
 cleanup() {
     echo
-    echo -n "Doing cleanup.. "
+    echo
+    echo "Doing cleanup.. "
     clean_iptables
     _cleanup 2> /dev/null
-    echo "done"
+    echo "Cleaning up done"
 }
 
 die() {
@@ -1058,6 +1038,7 @@ die() {
 }
 
 clean_exit() {
+    echo "clean_exit()"
     # send clean_exit signal to the main process
     [[ $BASHPID -ne $$ ]] && kill -USR1 $$
     # we don't need to call cleanup because it's traped on EXIT
@@ -1432,7 +1413,7 @@ if [[ $WIFI_IFACE ]]; then
         # in NetworkManager 0.9.9 and above we can set the interface as unmanaged without
         # the need of MAC address, so we set it before we create the virtual interface.
         if networkmanager_is_running && [[ $NM_OLDER_VERSION -eq 0 ]]; then
-            echo -n "Network Manager found, set ${VWIFI_IFACE} as unmanaged device... "
+            echo "Network Manager found, set ${VWIFI_IFACE} as unmanaged device... "
             networkmanager_add_unmanaged ${VWIFI_IFACE}
             # do not call networkmanager_wait_until_unmanaged because interface does not
             # exist yet
@@ -1441,14 +1422,14 @@ if [[ $WIFI_IFACE ]]; then
         if is_wifi_connected ${WIFI_IFACE}; then
             WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
             WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
-            echo -n "${WIFI_IFACE} is already associated with channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
+            echo "${WIFI_IFACE} already in channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
             if is_5ghz_frequency $WIFI_IFACE_FREQ; then
                 FREQ_BAND=5
             else
                 FREQ_BAND=2.4
             fi
             if [[ $WIFI_IFACE_CHANNEL -ne $CHANNEL ]]; then
-                echo ", fallback to channel ${WIFI_IFACE_CHANNEL}"
+                echo "Channel fallback to ${WIFI_IFACE_CHANNEL}"
                 CHANNEL=$WIFI_IFACE_CHANNEL
             else
                 echo
@@ -1457,7 +1438,7 @@ if [[ $WIFI_IFACE ]]; then
 
         VIRTDIEMSG="Maybe your WiFi adapter does not fully support virtual interfaces.
         Try again with --no-virt."
-        echo -n "Creating a virtual WiFi interface... "
+        echo "Creating a virtual WiFi interface... "
 
         if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
             # now we can call networkmanager_wait_until_unmanaged
@@ -1581,7 +1562,7 @@ fi
 #===================================================
 
 if networkmanager_exists && ! networkmanager_iface_is_unmanaged ${SUBNET_IFACE}; then
-    echo -n "Network Manager found, set ${SUBNET_IFACE} as unmanaged device... "
+    echo "Network Manager found, set ${SUBNET_IFACE} as unmanaged device... "
     networkmanager_add_unmanaged ${SUBNET_IFACE}
 
     if networkmanager_is_running; then
@@ -1699,10 +1680,11 @@ if [[ $WIFI_IFACE ]]; then
     if [[ $NO_HAVEGED -eq 0 ]]; then
         haveged_watchdog &
         HAVEGED_WATCHDOG_PID=$!
+        echo "haveged_watchdog PID: $HAVEGED_WATCHDOG_PID" 
     fi
 
     # start access point
-    echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
+    #echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
     # start hostapd (use stdbuf when available for no delayed output in programs that redirect stdout)
     STDBUF_PATH=`which stdbuf`
     if [ $? -eq 0 ]; then

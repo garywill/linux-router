@@ -1,7 +1,10 @@
 #  Linux-router
 
-Share your Linux's Internet access to other devices. Works on wired, wireless and virtual networks.
+Share your Linux's Internet access to other devices. 
 
+The goal is to easily set/unset your Linux PC/embedded device as a gateway/hotspot/transparent proxy. It wraps the complicated `iptables`, `dnsmasq` etc. stuff. Use in one command, restore by `control-c`.
+
+It works on wired, wireless and virtual networks.
  
 ##  Features
 
@@ -11,58 +14,46 @@ Basic features:
 - Share Internet to the sub-network
 - DHCP server
 - DNS server 
-- Transparent proxy (redsocks) (with DNS proxy)
+- Creating Wifi hotspot:
+  - Channel selecting
+  - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
+  - Hidden SSID
+  - Create AP on the same interface you are getting Internet (require same channel)
+- Transparent proxy (redsocks)
+- DNS proxy
 
-Creating Wifi hotspot:
+**For many other features, see below [CLI usage](#cli-usage-and-other-features)**
 
-- Channel selecting
-- Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
-- Hidden SSID
-- Create AP on the same interface you are getting Internet (require same channel)
-
-For many other features, see below CLI usage.
-
-Useful in these situations:
+### Useful in these situations
 ```
-Internet ----(eth0/wlan0)-Linux-(wlanX)AP
-                                        |
-                                        |----client
-                                        |
-                                        |----client
+Internet----(eth0/wlan0)-Linux-(wlanX)AP
+                                       |--client
+                                       |--client
 ```
 
 ```
                                     Internet
 Wifi AP(no DHCP)                        |
-    |                                   |
     |----(wlan1)-Linux-(eth0/wlan0)------
     |           (DHCP)
-    |
-    |----client
-    |
-    |----client
+    |--client
+    |--client
 ```
-
-
 
 ```
                                     Internet
  Switch                                 |
-    |                                   |
     |---(eth1)-Linux-(eth0/wlan0)--------
-    |
-    |----client
-    |
-    |----client
+    |--client
+    |--client
 ```
 
 ```
-Internet ----(eth0/wlan0)-Linux-(eth1)--------Another PC
+Internet----(eth0/wlan0)-Linux-(eth1)------Another PC
 ```
 
-
 ```
-Internet ----(eth0/wlan0)-Linux-(virtual interface)-----VM guests/container guests
+Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM guests/container guests
 ```
  
 ## Usage
@@ -79,12 +70,10 @@ Internet ----(eth0/wlan0)-Linux-(virtual interface)-----VM guests/container gues
 # lnxrouter --ap wlan0 MyAccessPoint --password MyPassPhrase
 ```
 
-### Make a LAN without Internet
+### LAN without Internet
 
 ```
 # lnxrouter -i eth1 -n
-```
-```
 # lnxrouter --ap wlan0 MyAccessPoint --password MyPassPhrase -n
 ```
 
@@ -100,12 +89,12 @@ In `torrc`
 TransPort 0.0.0.0:9040 
 DNSPort 0.0.0.0:9053
 ```
-### Using with LXC
+### Use with LXC
 Create a bridge
 ```
 # brctl addbr lxcbr1
 ```
-In LXC container's `config`
+In LXC container `config`
 ```
 lxc.network.type = veth
 lxc.network.flags = up
@@ -115,7 +104,7 @@ lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 ```
 # lnxrouter -i lxcbr1
 ```
-### Using with VirtualBox
+### Use with VirtualBox
 On VirtualBox's global settings, create a host-only network `vboxnet1` with DHCP disabled.
 ```
 # lnxrouter -i vboxnet1
@@ -136,7 +125,7 @@ Options:
                           Usually use with --dns-proxy
 
   -g <gateway>            Set Gateway IPv4 address, netmask is /24 (default: 192.168.18.1)
-  --dns-proxy <port>      Redirect 53 port to DNS proxy port. dnsmasq DNS is disabled
+  --dns-proxy <port>      Redirect incoming 53 port to DNS proxy port. dnsmasq DNS is disabled
   --no-serve-dns          dnsmasq DNS disabled
   --no-dnsmasq            Disable dnsmasq server completely (dhcp and dns)
   --log-dns               Show dnsmasq DNS server query log
@@ -189,7 +178,7 @@ Options:
 ```
 
 
-### Ddependencies
+## Dependencies
 - bash
 - procps or procps-ng
 - iproute2
@@ -208,6 +197,8 @@ Wifi hotspot:
 - Option to ban private network access
 - IPv6 support 
 - Option to random MAC, IP, SSID, password
+- Option to specify out-going interface
+- Option to catch and redirect all dns connections
 
 ## Thanks
 
