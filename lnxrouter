@@ -1592,6 +1592,8 @@ except-interface=*
 no-dhcp-interface=lo
 dhcp-range=${GATEWAY%.*}.1,${GATEWAY%.*}.254,255.255.255.0,24h
 dhcp-option-force=option:router,${GATEWAY}
+log-dhcp
+log-facility=/dev/stdout
 EOF
     if [[ "$DHCP_DNS" != "no" ]]; then
         if [[ "$DHCP_DNS" == "gateway" ]]; then
@@ -1614,7 +1616,6 @@ EOF
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
     if [[ ! "$SHOW_DNS_QUERY" -eq 0 ]]; then
         echo log-queries=extra >> $CONFDIR/dnsmasq.conf
-        echo log-facility=/dev/null >> $CONFDIR/dnsmasq.conf
     fi
 fi
 
@@ -1671,7 +1672,13 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     fi
 
     umask 0033
-    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases -u nobody -g nobody|| die & 
+    echo 
+    echo "Starting dnsmasq"
+    dnsmasq -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases || die & 
+    while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
+        sleep 1
+        echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
+    done
     umask $SCRIPT_UMASK
 fi
 
@@ -1690,9 +1697,16 @@ if [[ $WIFI_IFACE ]]; then
     if [ $? -eq 0 ]; then
         STDBUF_PATH=$STDBUF_PATH" -oL"
     fi
-    $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS $CONFDIR/hostapd.conf &
-    HOSTAPD_PID=$!
-    echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
+    echo 
+    echo "Starting hostapd"
+    $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -B $CONFDIR/hostapd.conf -P $CONFDIR/hostapd.pid || die &
+    while [[ ! -f $CONFDIR/hostapd.pid ]]; do
+        sleep 1
+        echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
+    done
+    
+    #HOSTAPD_PID=$!
+    #echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
 
     if ! wait $HOSTAPD_PID; then
         echo -e "\nError: Failed to run hostapd, maybe a program is interfering." >&2
