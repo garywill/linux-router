@@ -12,42 +12,43 @@ usage() {
     cat << EOF
 linux-router $VERSION (https://github.com/garywill/linux-router)
 
-Usage: $PROGNAME [options] 
+Usage: $PROGNAME <options>
 
 Options:
     -h, --help              Show this help
     --version               Print version number
 
-    -i <interface>          Interface to share Internet to.
-                            An NATed subnet is made upon it.
-                            To create Wifi hotspot use '--ap' instead
+    -i <interface>          Interface to make NATed sub-network,
+                            and to provide Internet to
+                            (To create Wifi hotspot use '--ap' instead)
     -n                      Disable Internet sharing
-    --tp <port>             Transparent proxy.
-                            redirect non-LAN tcp and udp traffic to port.
-                            Usually used with '--dns-proxy'
     
-    -g <gateway>            Set gateway IPv4 address, netmask is /24 .
+    -g <ip>                 Set this host's IPv4 address, netmask is 24 
                             (default: 192.168.18.1)
     -6                      Enable IPv6 (NAT)
     --p6 <prefix>           Set IPv6 prefix (length 64)
                             (default: fd00:1:1:1:: )
-    --dns-proxy <port>      DNS server redirect queries to port
-    --no-serve-dns          Disable DNS server
+                            
+    --no-serve-dns          Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server completely (DHCP, DNS, RA)
-    --log-dns               Show DNS server query log
+    --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
-                            Set IPv4 DNS offered by DHCP 
-                            (default: gateway as DNS)
+                            Set IPv4 DNS offered by DHCP (default: this host)
     --dhcp-dns6 <IP1[,IP2]>|no
-                            Set IPv6 DNS offered by DHCP(RA) 
-                            (default: gateway as DNS)
-                            Note IPv6 addresses need '[]' around
+                            Set IPv6 DNS offered by DHCP (RA) 
+                            (default: this host)
+                            (Note IPv6 addresses need '[]' around)
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
     
     --mac <MAC>             Set MAC address
  
+    --tp <port>             Transparent proxy,
+                            redirect non-LAN tcp and udp traffic to port.
+                            Usually used with '--dns-proxy'
+    --dns-proxy <port>      DNS server redirects queries to
+    
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
@@ -71,10 +72,12 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
+    
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
     --vht_capab <VHT>       VHT capabilities
+    
     --no-haveged            Do not run haveged automatically when needed
 
   Instance managing:
@@ -987,10 +990,6 @@ if [[ $TP_PORT ]]; then
 fi
 
 
-if [[ $SHARE_METHOD == 'none' ]]; then
-    dnsmasq_NO_DNS=1
-fi
-
 if [[ $IPV6 -eq 1 ]]; then
     GATEWAY6=${PREFIX6}${IID6}
 fi
@@ -1107,11 +1106,10 @@ if [[ $WIFI_IFACE ]]; then
     fi
 
     if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^rtl[0-9].*$ ]]; then
-        if [[ -n "$PASSPHRASE" ]]; then
-            echo "WARN: Realtek drivers usually have problems with WPA1, enabling -w 2" >&2
-            WPA_VERSION=2
+        if [[ $WPA_VERSION == '1' || $WPA_VERSION == '1+2' ]]; then
+            echo "WARN: Realtek drivers usually have problems with WPA1, WPA2 is recommended" >&2
         fi
-        echo "WARN: If AP doesn't work, please read: howto/realtek.md" >&2
+        echo "WARN: If AP doesn't work, read https://github.com/oblique/create_ap/blob/master/howto/realtek.md" >&2
     fi
 
 fi
@@ -1123,7 +1121,7 @@ if [[ -n "$NEW_MACADDR" ]]; then
     fi
 
     if [[ $(get_all_macaddrs | grep -c ${NEW_MACADDR}) -ne 0 ]]; then
-        echo "WARN: MAC address '${NEW_MACADDR}' already exists. Because of this, you may encounter some problems" >&2
+        echo "WARN: MAC address '${NEW_MACADDR}' already exists" >&2
     fi
 fi
 
@@ -1333,9 +1331,14 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
 		#log-dhcp
 		log-facility=/dev/null
 		bogus-priv
+		domain-needed
 	EOF
-	# 'log-dhcp' show too much logs. Using '-d' in dnsmasq command shows a proper dhcp log
-	# if use '-d', 'log-facility' should = /dev/null
+    # 'log-dhcp' show too much logs. Using '-d' in dnsmasq command shows a proper dhcp log
+    # if use '-d', 'log-facility' should = /dev/null
+    if [[ $SHARE_METHOD == "none" ]]; then    
+        echo "no-resolv"  >> $CONFDIR/dnsmasq.conf
+        echo "no-poll" >> $CONFDIR/dnsmasq.conf
+    fi
     if [[ "$DHCP_DNS" != "no" ]]; then
         if [[ "$DHCP_DNS" == "gateway" ]]; then
             dns_offer="$GATEWAY"
@@ -1421,7 +1424,7 @@ if [[ $WIFI_IFACE ]]; then
     #    sleep 1
     #done
     #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
-    ( while [ -e /proc/$HOSTAPD_PID ]; do sleep 1; done ; die "hostapd exited" ) &
+    ( while [ -e /proc/$HOSTAPD_PID ]; do sleep 10; done ; die "hostapd exited" ) &
 
     sleep 3
 fi
@@ -1493,14 +1496,14 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     #done
     #echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
     #(wait $DNSMASQ_PID ; die "dnsmasq failed") &
-    ( while [ -e /proc/$DNSMASQ_PID ]; do sleep 1; done ; die "dnsmasq exited" ) &
+    ( while [ -e /proc/$DNSMASQ_PID ]; do sleep 10; done ; die "dnsmasq exited" ) &
     sleep 2
 
 fi
 
 
 # need loop to keep this script running
-bash -c "while :; do sleep 800 ; done " &
+bash -c "while :; do sleep 8000 ; done " &
 KEEP_RUNNING_PID=$!
 echo $KEEP_RUNNING_PID > $CONFDIR/keep_running.pid
 wait $KEEP_RUNNING_PID

@@ -59,7 +59,7 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
  
 ## Usage
 
-### Share Internet to an interface
+### Provide Internet to an interface
 
 ```
 # lnxrouter -i eth1
@@ -78,7 +78,7 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 # lnxrouter --ap wlan0 MyAccessPoint --password MyPassPhrase -n
 ```
 
-### Transparent proxy with tor
+### Transparent proxy with Tor
 
 ```
 # lnxrouter -i eth1 --tp 9040 --dns-proxy 9053
@@ -231,7 +231,9 @@ Options:
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
 ```
-> On exiting it restores changes done to system, except `/proc/sys/net/ipv4/ip_forward` and `/proc/sys/net/ipv6/conf/all/forwarding` set by NAT mode.
+> These changes to system will not be restored by script's cleanup:
+1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`, needed by NAT Internet sharing.
+2. dnsmasq in Apparmor complain mode
 
 ## Dependencies
 - bash
