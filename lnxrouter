@@ -591,7 +591,6 @@ ADDN_HOSTS=
 DHCP_DNS=gateway
 NO_DNS=0
 NO_DNSMASQ=0
-DNS_PORT=5353
 HIDDEN=0
 MAC_FILTER=0
 MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
@@ -642,20 +641,12 @@ stop_nat() {
 }
 
 start_dns() {
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
-    iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-        -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
-    iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-        -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 53 -j ACCEPT || die
 }
 stop_dns() {
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
-    iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-        -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-    iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-        -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport 53 -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 53 -j ACCEPT
 }
 
 start_dhcp() {
@@ -1512,7 +1503,7 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     fi
 
     umask 0033
-    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases -p $DNS_PORT || die & 
+    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases || die & 
     umask $SCRIPT_UMASK
 fi
 
