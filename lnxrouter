@@ -347,19 +347,7 @@ while [[ -n "$1" ]]; do
     esac
 done
 
-
-if [[ -d /dev/shm ]]; then
-    TMPDIR=/dev/shm
-elif [[ -d /run/shm ]]; then
-    TMPDIR=/run/shm
-else
-    TMPDIR=/tmp
-fi
-mkdir -p $TMPDIR/lnxrouter_tmp
-TMPDIR=$TMPDIR/lnxrouter_tmp
-chmod 755 $TMPDIR 2>/dev/null
-
-
+#==========
 
 # it takes 2 arguments
 # returns:
@@ -384,23 +372,14 @@ version_cmp() {
     return 0
 }
 
+#=========
+
 USE_IWCONFIG=0
 
 is_interface() {
     [[ -z "$1" ]] && return 1
     [[ -d "/sys/class/net/${1}" ]]
 }
-
-is_wifi_interface() {
-    which iw > /dev/null 2>&1 && iw dev $1 info > /dev/null 2>&1 && return 0
-    if which iwconfig > /dev/null 2>&1 && iwconfig $1 > /dev/null 2>&1; then
-        USE_IWCONFIG=1
-        return 0
-    fi
-    return 1
-}
-
-
 
 get_phy_device() { # only for wifi interface
     local x
@@ -510,13 +489,9 @@ is_wifi_connected() {
     return 1
 }
 
-is_macaddr() {
-    echo "$1" | grep -E "^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$" > /dev/null 2>&1
-}
 
 is_unicast_macaddr() {
     local x
-    is_macaddr "$1" || return 1
     x=$(echo "$1" | cut -d: -f1)
     x=$(printf '%d' "0x${x}")
     [[ $(expr $x % 2) -eq 0 ]]
@@ -547,6 +522,8 @@ dealloc_iface() {
     rm -f $COMMON_CONFDIR/ifaces/$1
 }
 
+#======
+
 get_all_macaddrs() {
     cat /sys/class/net/*/address
 }
@@ -555,7 +532,7 @@ get_new_macaddr() {
     local OLDMAC NEWMAC LAST_BYTE i
     OLDMAC=$(get_macaddr "$1")
     LAST_BYTE=$(printf %d 0x${OLDMAC##*:})
-    for i in {1..255}; do
+    for i in {10..240}; do
         NEWMAC="${OLDMAC%:*}:$(printf %02x $(( ($LAST_BYTE + $i) % 256 )))"
         (get_all_macaddrs | grep "$NEWMAC" > /dev/null 2>&1) || break
     done
@@ -569,18 +546,20 @@ haveged_watchdog() {
         if [[ $(cat /proc/sys/kernel/random/entropy_avail) -lt 1000 ]]; then
             if ! which haveged > /dev/null 2>&1; then
                 if [[ $show_warn -eq 1 ]]; then
-                    echo "WARN: Low entropy detected. We recommend you to install \`haveged'"
+                    echo "WARN: Low entropy detected. We recommend you to install \`haveged'" 1>&2
                     show_warn=0
                 fi
             elif ! pidof haveged > /dev/null 2>&1; then
-                echo "Low entropy detected, starting haveged"
+                echo "Low entropy detected, starting haveged" 1>&2
                 # boost low-entropy
                 haveged -w 1024 -p $COMMON_CONFDIR/haveged.pid
             fi
         fi
-        sleep 5
+        sleep 2
     done
 }
+
+#========
 
 NETWORKMANAGER_CONF=/etc/NetworkManager/NetworkManager.conf
 NM_OLDER_VERSION=1
@@ -747,6 +726,8 @@ networkmanager_wait_until_unmanaged() {
     return 0
 }
 
+#=========
+
 alias iptables="iptables -w"
 iptables_()
 {
@@ -882,14 +863,14 @@ _cleanup() {
 
         # set old ip_forward
         if [[ -f $COMMON_CONFDIR/ip_forward ]]; then
-            echo Set to old value: /proc/sys/net/ipv4/ip_forward=$(cat $COMMON_CONFDIR/ip_forward)
+            echo "Set to old value: /proc/sys/net/ipv4/ip_forward=$(cat $COMMON_CONFDIR/ip_forward)"
             cp -f $COMMON_CONFDIR/ip_forward /proc/sys/net/ipv4
             rm -f $COMMON_CONFDIR/ip_forward
         fi
 
 
         rm -rf $COMMON_CONFDIR
-        rm -f $LOCK_FILE
+        rm -rf $TMPDIR
     else
         echo "Exiting: This is NOT the only running instance"
     fi
@@ -947,6 +928,8 @@ clean_exit() { # SIGUSR1
     [[ $BASHPID -ne $$ ]] && kill -USR1 $$ || cleanup
     exit 0
 }
+
+#========
 
 list_running_conf() {
     local x
@@ -1097,14 +1080,6 @@ send_stop() {
 }
 
 
-
-
-# if the user press ctrl+c or we get USR1 signal
-# then run clean_exit()
-trap "clean_exit" SIGINT SIGUSR1 SIGTERM
-# if we get USR2 signal then run die().
-trap "die" SIGUSR2
-
 ## ========================================================
 ## ========================================================
 
@@ -1119,6 +1094,8 @@ fi
 if [[ $SHARE_METHOD == 'none' ]]; then
     dnsmasq_NO_DNS=1
 fi
+
+#======
 
 if [[ $LIST_RUNNING -eq 1 ]]; then
     echo -e "List of running $PROGNAME instances:\n"
@@ -1148,6 +1125,9 @@ if [[ $FIX_UNMANAGED -eq 1 ]]; then
     exit 0
 fi
 
+#=============================================
+#=============================================
+
 if [[ $DAEMONIZE -eq 1 && $RUNNING_AS_DAEMON -eq 0 ]]; then
     echo "Running as Daemon..."
     # run a detached lnxrouter
@@ -1175,12 +1155,6 @@ if [[ $WIFI_IFACE ]]; then
         FREQ_BAND=5
     fi
 
-
-    if ! is_wifi_interface ${WIFI_IFACE}; then
-        echo "ERROR: '${WIFI_IFACE}' is not a WiFi interface" >&2
-        exit 1
-    fi
-
     if ! can_be_ap ${WIFI_IFACE}; then
         echo "ERROR: Your adapter does not support AP (master) mode" >&2
         exit 1
@@ -1197,11 +1171,6 @@ if [[ $WIFI_IFACE ]]; then
     fi
 
     HOSTAPD=$(which hostapd)
-
-    if [[ ! -x "$HOSTAPD" ]]; then
-        echo "ERROR: hostapd not found." >&2
-        exit 1
-    fi
 
     if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^(8192[cd][ue]|8723a[sue])$ ]]; then
         if ! strings "$HOSTAPD" | grep -m1 rtl871xdrv > /dev/null 2>&1; then
@@ -1241,11 +1210,6 @@ if [[ $WIFI_IFACE ]]; then
 fi
 
 if [[ -n "$NEW_MACADDR" ]]; then
-    if ! is_macaddr "$NEW_MACADDR"; then
-        echo "ERROR: '${NEW_MACADDR}' is not a valid MAC address" >&2
-        exit 1
-    fi
-
     if ! is_unicast_macaddr "$NEW_MACADDR"; then
         echo "ERROR: The first byte of MAC address (${NEW_MACADDR}) must be even" >&2
         exit 1
@@ -1255,6 +1219,8 @@ if [[ -n "$NEW_MACADDR" ]]; then
         echo "WARN: MAC address '${NEW_MACADDR}' already exists. Because of this, you may encounter some problems" >&2
     fi
 fi
+
+# checks finished
 
 ## ========================================================
 ## ========================================================
@@ -1268,7 +1234,25 @@ else
 fi
 echo "Target interface is ${TARGET_IFACE}"
 
+#=================
+# begin to do some change on config files and system
+
 trap "cleanup" EXIT
+trap "clean_exit" SIGINT SIGUSR1 SIGTERM
+trap "die" SIGUSR2
+
+
+if [[ -d /dev/shm ]]; then
+    TMPDIR=/dev/shm
+elif [[ -d /run/shm ]]; then
+    TMPDIR=/run/shm
+else
+    TMPDIR=/tmp
+fi
+mkdir -p $TMPDIR/lnxrouter_tmp
+TMPDIR=$TMPDIR/lnxrouter_tmp
+chmod 755 $TMPDIR 2>/dev/null
+
 CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)
 chmod 755 $CONFDIR
 #echo "Config dir: $CONFDIR"
@@ -1276,7 +1260,7 @@ echo "PID: $$"
 echo $$ > $CONFDIR/pid
 
 
-COMMON_CONFDIR=$TMPDIR/lnxrouter.common.conf
+COMMON_CONFDIR=$TMPDIR/lnxrouter_common.conf
 mkdir -p $COMMON_CONFDIR
 
 cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
@@ -1588,7 +1572,7 @@ if [[ $WIFI_IFACE ]]; then
     echo 
     echo "Starting hostapd"
     # hostapd '-P' works only when use '-B' (run in background)
-    $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf  &
+    $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf  &
     HOSTAPD_PID=$!
     echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
     echo -n "hostapd PID: $HOSTAPD_PID"
@@ -1607,9 +1591,6 @@ sleep 2
 bash -c "while :; do sleep 3 ; done " &
 KEEP_RUNNING_PID=$!
 echo $KEEP_RUNNING_PID > $CONFDIR/keep_running.pid
-
-#jobs -p
-
 wait $KEEP_RUNNING_PID
 
 clean_exit
