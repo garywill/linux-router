@@ -21,6 +21,7 @@ Basic features:
   - Create AP on the same interface you are getting Internet (require same channel)
 - Transparent proxy (redsocks)
 - DNS proxy
+- Compatible with NetworkManager (automatically set interface as unmanaged)
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
 
@@ -53,7 +54,7 @@ Internet----(eth0/wlan0)-Linux-(eth1)------Another PC
 ```
 
 ```
-Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM guests/container guests
+Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ```
  
 ## Usage
@@ -136,6 +137,17 @@ To remove that new profile from container
 ```
 $ lxc profile remove <container> profile5
 ```
+
+#### To not use profile
+Add device `eth0` to container overriding default `eth0`
+```
+$ lxc config device add <container> eth0 nic name=eth0 nictype=bridged parent=lxdbr5
+```
+To remove the customized `eth0` to restore default `eth0`
+```
+$ lxc config device remove <container> eth0
+```
+
 ### Use as transparent proxy for VirtualBox
 On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
 ```

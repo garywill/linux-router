@@ -25,7 +25,7 @@ usage() {
     echo "  --tp <port>             Transparent proxy, redirect non-LAN tcp and udp traffic to port."
     echo "                          Usually use with --dns-proxy"
     echo 
-    echo "  -g <gateway>            Set Gateway IPv4 address, netmask is /24 (default: 192.168.18.1)"
+    echo "  -g <gateway>            Set gateway IPv4 address, netmask is /24 (default: 192.168.18.1)"
     echo "  --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port. DNS server is disabled"
     echo "  --no-serve-dns          Disable DNS server"
     echo "  --no-dnsmasq            Disable dnsmasq server completely (DHCP and DNS)"
@@ -335,16 +335,6 @@ while [[ -n "$1" ]]; do
             ;;
     esac
 done
-
-#==========
-
-# it takes 2 arguments
-# returns:
-#  0 if v1 (1st argument) and v2 (2nd argument) are the same
-#  1 if v1 is less than v2
-#  2 if v1 is greater than v2
-
-#=========
 
 USE_IWCONFIG=0
 
@@ -1097,6 +1087,7 @@ trap "die" SIGUSR2
 
 mkdir -p $TMPDIR
 chmod 755 $TMPDIR 2>/dev/null
+cd $TMPDIR
 
 CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)
 chmod 755 $CONFDIR
@@ -1271,9 +1262,9 @@ group=nobody
 bind-dynamic
 listen-address=${GATEWAY}
 interface=$SUBNET_IFACE
-except-interface=*
+except-interface=lo
 no-dhcp-interface=lo
-dhcp-range=${GATEWAY%.*}.1,${GATEWAY%.*}.254,255.255.255.0,24h
+dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
 dhcp-option-force=option:router,${GATEWAY}
 #log-dhcp
 log-facility=/dev/null
@@ -1295,7 +1286,7 @@ EOF
     if [[ ! "$dnsmasq_NO_DNS" -eq 0 ]]; then
         echo "port=0"  >> $CONFDIR/dnsmasq.conf
     fi
-    MTU=1280 # TODO temporary value. This used to be read from the INTERNET_IFACE
+
     [[ -n "$MTU" ]] && echo "dhcp-option-force=option:mtu,${MTU}" >> $CONFDIR/dnsmasq.conf
     [[ $ETC_HOSTS -eq 0 ]] && echo no-hosts >> $CONFDIR/dnsmasq.conf
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
@@ -1316,8 +1307,40 @@ ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
 
 ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
-ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IP"
 
+if [[ $WIFI_IFACE ]]; then
+
+    if [[ $NO_HAVEGED -eq 0 ]]; then
+        haveged_watchdog &
+        HAVEGED_WATCHDOG_PID=$!
+        echo $HAVEGED_WATCHDOG_PID > $CONFDIR/haveged_watchdog.pid
+        echo "haveged_watchdog PID: $HAVEGED_WATCHDOG_PID" 
+    fi
+
+    # start access point
+    #echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
+    # start hostapd (use stdbuf when available for no delayed output in programs that redirect stdout)
+    STDBUF_PATH=`which stdbuf`
+    if [ $? -eq 0 ]; then
+        STDBUF_PATH=$STDBUF_PATH" -oL"
+    fi
+    echo 
+    echo "Starting hostapd"
+    # hostapd '-P' works only when use '-B' (run in background)
+    $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf  &
+    HOSTAPD_PID=$!
+    echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
+    echo "hostapd PID: $HOSTAPD_PID"
+    #while [[ ! -f $CONFDIR/hostapd.pid ]]; do
+    #    sleep 1
+    #done
+    #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
+    ( while [ -e /proc/$HOSTAPD_PID ]; do sleep 1; done ; die "hostapd exited" ) &
+
+    sleep 3
+fi
+
+ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IP"
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
@@ -1374,40 +1397,6 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
 fi
 
 
-if [[ $WIFI_IFACE ]]; then
-
-    if [[ $NO_HAVEGED -eq 0 ]]; then
-        haveged_watchdog &
-        HAVEGED_WATCHDOG_PID=$!
-        echo $HAVEGED_WATCHDOG_PID > $CONFDIR/haveged_watchdog.pid
-        echo "haveged_watchdog PID: $HAVEGED_WATCHDOG_PID" 
-    fi
-
-    # start access point
-    #echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
-    # start hostapd (use stdbuf when available for no delayed output in programs that redirect stdout)
-    STDBUF_PATH=`which stdbuf`
-    if [ $? -eq 0 ]; then
-        STDBUF_PATH=$STDBUF_PATH" -oL"
-    fi
-    echo 
-    echo "Starting hostapd"
-    # hostapd '-P' works only when use '-B' (run in background)
-    $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf  &
-    HOSTAPD_PID=$!
-    echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
-    echo -n "hostapd PID: $HOSTAPD_PID"
-    #while [[ ! -f $CONFDIR/hostapd.pid ]]; do
-    #    sleep 1
-    #done
-    #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
-    ( while [ -e /proc/$HOSTAPD_PID ]; do sleep 1; done ; die "hostapd exited" ) &
-
-
-fi
-
-
-sleep 2
 # need loop to keep this script running
 bash -c "while :; do sleep 800 ; done " &
 KEEP_RUNNING_PID=$!
