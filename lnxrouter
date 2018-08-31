@@ -958,6 +958,7 @@ _cleanup() {
 
     # if we are the last lnxrouter instance then set back the common values
     if ! has_running_instance; then
+        echo "Exiting: This is the only running instance"
         # kill common processes
         for x in $COMMON_CONFDIR/*.pid; do
             [[ -f $x ]] && kill -9 $(cat $x)
@@ -965,19 +966,15 @@ _cleanup() {
 
         # set old ip_forward
         if [[ -f $COMMON_CONFDIR/ip_forward ]]; then
+            echo Set to old value: /proc/sys/net/ipv4/ip_forward=$(cat $COMMON_CONFDIR/ip_forward)
             cp -f $COMMON_CONFDIR/ip_forward /proc/sys/net/ipv4
             rm -f $COMMON_CONFDIR/ip_forward
         fi
 
-        # set old bridge-nf-call-iptables
-        if [[ -f $COMMON_CONFDIR/bridge-nf-call-iptables ]]; then
-            if [[ -e /proc/sys/net/bridge/bridge-nf-call-iptables ]]; then
-                cp -f $COMMON_CONFDIR/bridge-nf-call-iptables /proc/sys/net/bridge
-            fi
-            rm -f $COMMON_CONFDIR/bridge-nf-call-iptables
-        fi
 
         rm -rf $COMMON_CONFDIR
+    else
+        echo "Exiting: This is NOT the only running instance"
     fi
     
     ip link set down dev ${AP_IFACE}
@@ -1024,7 +1021,7 @@ cleanup() {
     echo
     echo -n "Doing cleanup.. "
     clean_iptables
-    _cleanup > /dev/null 2>&1
+    _cleanup 2> /dev/null
     echo "done"
 }
 
@@ -1091,7 +1088,7 @@ get_confdir_from_pid() {
     mutex_unlock
 }
 
-print_client() {
+print_client_by_mac() {
     local line ipaddr hostname
     local mac="$1"
 
@@ -1107,6 +1104,23 @@ print_client() {
     printf "%-20s %-18s %s\n" "$mac" "$ipaddr" "$hostname"
 }
 
+print_clients_in_leases() {
+    local line ipaddr hostname
+    local mac
+
+    if [[ -f $CONFDIR/dnsmasq.leases ]]; then
+        while read line
+        do
+            mac=$(echo $line | cut -d' ' -f2)
+            ipaddr=$(echo $line | cut -d' ' -f3)
+            hostname=$(echo $line | cut -d' ' -f4)
+            
+            printf "%-20s %-18s %s\n" "MAC" "IP" "Hostname"
+            printf "%-20s %-18s %s\n" "$mac" "$ipaddr" "$hostname"
+        done < $CONFDIR/dnsmasq.leases
+    fi
+}
+
 list_clients() {
     local subn_iface pid
 
@@ -1118,7 +1132,6 @@ list_clients() {
     fi
 
     [[ -z "$subn_iface" ]] && subn_iface="$1"
-    is_wifi_interface "$subn_iface" || die "'$subn_iface' is not a WiFi interface."
 
     [[ -z "$pid" ]] && pid=$(get_pid_from_subn_iface "$subn_iface")
     [[ -z "$pid" ]] && die "'$subn_iface' is not used from $PROGNAME instance.\n\
@@ -1126,7 +1139,7 @@ list_clients() {
        Use --list-running to find it out."
     [[ -z "$CONFDIR" ]] && CONFDIR=$(get_confdir_from_pid "$pid")
 
-    if [[ $USE_IWCONFIG -eq 0 ]]; then
+    if [[ -f $CONFDIR/hostapd.conf  && $USE_IWCONFIG -eq 0 ]]; then
         local awk_cmd='($1 ~ /Station$/) {print $2}'
         local client_list=$(iw dev "$subn_iface" station dump | awk "$awk_cmd")
 
@@ -1139,11 +1152,12 @@ list_clients() {
 
         local mac
         for mac in $client_list; do
-            print_client $mac
+            print_client_by_mac $mac
         done
     else
-        die "This option is not supported for the current driver."
-    fi
+        echo "Listing clients via DNS lease file. non-DHCPed clients won't be showed"
+        print_clients_in_leases
+    fi 
 }
 
 has_running_instance() {
@@ -1364,9 +1378,7 @@ COMMON_CONFDIR=/tmp/lnxrouter.common.conf
 mkdir -p $COMMON_CONFDIR
 
 cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
-if [[ -e /proc/sys/net/bridge/bridge-nf-call-iptables ]]; then
-    cp -n /proc/sys/net/bridge/bridge-nf-call-iptables $COMMON_CONFDIR
-fi
+
 mutex_unlock
 
 
