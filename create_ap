@@ -67,8 +67,6 @@ usage() {
     echo "                          For an <id> you can put the PID of create_ap or the WiFi interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
-    #echo "  --mkconfig <conf_file>  Store configs in conf_file"
-    #echo "  --config <conf_file>    Load configs from conf_file"
     echo
     echo "Non-Bridging Options:"
     echo "  --no-dns                Disable dnsmasq DNS server"
@@ -624,10 +622,6 @@ USE_PSK=0
 HOSTAPD_DEBUG_ARGS=
 REDIRECT_TO_LOCALHOST=0
 
-CONFIG_OPTS=(CHANNEL GATEWAY WPA_VERSION ETC_HOSTS DHCP_DNS NO_DNS NO_DNSMASQ HIDDEN MAC_FILTER MAC_FILTER_ACCEPT ISOLATE_CLIENTS
-             SHARE_METHOD IEEE80211N IEEE80211AC HT_CAPAB VHT_CAPAB DRIVER NO_VIRT COUNTRY FREQ_BAND
-             NEW_MACADDR DAEMONIZE NO_HAVEGED WIFI_IFACE INTERNET_IFACE
-             SSID PASSPHRASE USE_PSK)
 
 FIX_UNMANAGED=0
 LIST_RUNNING=0
@@ -912,7 +906,7 @@ send_stop() {
 ARGS=( "$@" )
 
 
-GETOPT_ARGS=$(getopt -o hc:w:g:de:nm: -l "help","hidden","hostapd-debug:","redirect-to-localhost","mac-filter","mac-filter-accept:","isolate-clients","ieee80211n","ieee80211ac","ht_capab:","vht_capab:","driver:","no-virt","fix-unmanaged","country:","freq-band:","mac:","dhcp-dns:","daemon","stop:","list","list-running","list-clients:","version","psk","no-haveged","no-dns","no-dnsmasq","mkconfig:","config:" -n "$PROGNAME" -- "$@")
+GETOPT_ARGS=$(getopt -o hc:w:g:de:nm: -l "help","hidden","hostapd-debug:","redirect-to-localhost","mac-filter","mac-filter-accept:","isolate-clients","ieee80211n","ieee80211ac","ht_capab:","vht_capab:","driver:","no-virt","fix-unmanaged","country:","freq-band:","mac:","dhcp-dns:","daemon","stop:","list","list-running","list-clients:","version","psk","no-haveged","no-dns","no-dnsmasq" -n "$PROGNAME" -- "$@")
 [[ $? -ne 0 ]] && exit 1
 eval set -- "$GETOPT_ARGS"
 
@@ -1090,19 +1084,6 @@ while :; do
     esac
 done
 
-# Load positional args from config file, if needed
-if [[ -n "$LOAD_CONFIG" && $# -eq 0 ]]; then
-    i=0
-    # set arguments in order
-    for x in WIFI_IFACE INTERNET_IFACE SSID PASSPHRASE; do
-        if eval "[[ -n \"\$${x}\" ]]"; then
-            eval "set -- \"\${@:1:$i}\" \"\$${x}\""
-            ((i++))
-        fi
-        # we unset the variable to avoid any problems later
-        eval "unset $x"
-    done
-fi
 
 # Check if required number of positional args are present
 if [[ $# -lt 1 && $FIX_UNMANAGED -eq 0  && -z "$STOP_ID" &&
