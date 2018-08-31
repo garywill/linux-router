@@ -1,19 +1,19 @@
 #  Linux-router
 
-Share your Linux's Internet access to other devices. 
+Set Linux as router in one command. Able to Provide Internet, or create Wifi hotspot. Support transparent proxy (redsocks). Also useful for routing VM/containers.
 
-The goal is to easily set/unset your Linux PC/embedded device as a gateway/hotspot/transparent proxy. It wraps the complicated `iptables`, `dnsmasq` etc. stuff. Use in one command, restore by `control-c`.
+It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c`.
 
-It works on wired, wireless and virtual networks.
  
 ##  Features
 
 Basic features:
 
 - Create a NATed sub-network
-- Share Internet to the sub-network
-- DHCP server
+- Provide Internet
+- DHCP server and RA
 - DNS server 
+- IPv6 (NAT only for now)
 - Creating Wifi hotspot:
   - Channel selecting
   - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
@@ -89,8 +89,10 @@ In `torrc`
 ```
 TransPort 0.0.0.0:9040 
 DNSPort 0.0.0.0:9053
+TransPort [::]:9040 
+DNSPort [::]:9053
 ```
-### Use for LXC
+### Internet for LXC
 Create a bridge
 ```
 # brctl addbr lxcbr5
@@ -165,16 +167,18 @@ Options:
   -i <interface>          Interface to share Internet to. An NATed subnet is made upon it.
                           To create Wifi hotspot use '--ap' instead
   -n                      Disable Internet sharing
-  --tp <port>             Transparent proxy (redsocks), redirect tcp and udp traffic to port.
+  --tp <port>             Transparent proxy, redirect non-LAN tcp and udp traffic to port.
                           Usually use with --dns-proxy
 
-  -g <gateway>            Set Gateway IPv4 address, netmask is /24 (default: 192.168.18.1)
+  -g <gateway>            Set gateway IPv4 address, netmask is /24 (default: 192.168.18.1)
+  -6                      Enable IPv6
+  --p6 <prefix>           Set IPv6 prefix (length 64) (default: fd00:1:1:1:: )
   --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port. DNS server is disabled
   --no-serve-dns          Disable DNS server
   --no-dnsmasq            Disable dnsmasq server completely (DHCP and DNS)
   --log-dns               Show DNS server query log
   --dhcp-dns <IP1[,IP2]>|no
-                          Set DNS offered by DHCP, or no DNS offered (default: gateway as DNS)
+                          Set IPv4 DNS offered by DHCP (default: gateway as DNS)
   -d                      DNS server will take into account /etc/hosts
   -e <hosts_file>         DNS server will take into account additional hosts file
 
@@ -234,10 +238,8 @@ Wifi hotspot:
 ## TODO
 
 - Option to ban private network access
-- IPv6 support 
-- Option to random MAC, IP, SSID, password
-- Option to specify out-going interface
-- Option to catch and redirect all dns connections
+- Option to randomize MAC, IP, SSID, password
+- Option to redirect all DNS traffic
 
 ## Thanks
 

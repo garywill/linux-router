@@ -9,76 +9,90 @@ SCRIPT_UMASK=0122
 umask $SCRIPT_UMASK
 
 usage() {
-    echo "linux-router $VERSION (https://github.com/garywill/linux-router)"
-    echo "    Share your Linux's Internet access to other devices. "
-    echo "    Works on wired, wireless and virtual networks."
-    echo 
-    echo "Usage: "$PROGNAME" [options] "
-    echo
-    echo "Options:"
-    echo "  -h, --help              Show this help"
-    echo "  --version               Print version number"
-    echo
-    echo "  -i <interface>          Interface to share Internet to. An NATed subnet is made upon it."
-    echo "                          To create Wifi hotspot use '--ap' instead"
-    echo "  -n                      Disable Internet sharing"
-    echo "  --tp <port>             Transparent proxy, redirect non-LAN tcp and udp traffic to port."
-    echo "                          Usually use with --dns-proxy"
-    echo 
-    echo "  -g <gateway>            Set gateway IPv4 address, netmask is /24 (default: 192.168.18.1)"
-    echo "  --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port. DNS server is disabled"
-    echo "  --no-serve-dns          Disable DNS server"
-    echo "  --no-dnsmasq            Disable dnsmasq server completely (DHCP and DNS)"
-    echo "  --log-dns               Show DNS server query log"
-    echo "  --dhcp-dns <IP1[,IP2]>|no"
-    echo "                          Set DNS offered by DHCP, or no DNS offered (default: gateway as DNS)"
-    echo "  -d                      DNS server will take into account /etc/hosts"
-    echo "  -e <hosts_file>         DNS server will take into account additional hosts file"
-    echo 
-    echo "  --mac <MAC>             Set MAC address"
-    echo 
-    echo " Wifi hotspot options:"
-    echo "  --ap <wlan card interface> <access point name>"
-    echo "                          Create Wifi access point using wlan card, and set SSID"
-    echo "  --password <passphrase> Wifi password"
-    echo 
-    echo "  --hidden                Make the Access Point hidden (do not broadcast the SSID)"
-    echo "  --no-virt               Do not create virtual interface. "
-    echo "                          Using this you can't use same wlan card as Internet and AP"
-    echo "  -c <channel>            Channel number (default: 1)"
-    echo "  --country <code>        Set two-letter country code for regularity (example: US)"
-    echo "  --freq-band <GHz>       Set frequency band. Valid inputs: 2.4, 5 (default: 2.4)"
-    echo "  --driver                Choose your WiFi adapter driver (default: nl80211)"
-    echo "  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)"
-    echo "  --psk                   Use 64 hex digits pre-shared-key instead of passphrase"
-    echo "  --mac-filter            Enable Wifi hotspot MAC address filtering"
-    echo "  --mac-filter-accept     Location of Wifi hotspot MAC address filter list (defaults to /etc/hostapd/hostapd.accept)"
-    echo "  --hostapd-debug <level> With level between 1 and 2, passes arguments -d or -dd to hostapd for debugging."
-    echo "  --isolate-clients       Disable communication between clients"
-    echo "  --ieee80211n            Enable IEEE 802.11n (HT)"
-    echo "  --ieee80211ac           Enable IEEE 802.11ac (VHT)"
-    echo "  --ht_capab <HT>         HT capabilities (default: [HT40+])"
-    echo "  --vht_capab <VHT>       VHT capabilities"
-    echo "  --no-haveged            Do not run 'haveged' automatically when needed"
-    echo
-    echo " Instance managing:"
-    echo "  --daemon                Run lnxrouter in the background"
-    echo "  --list-running          Show the lnxrouter processes that are already running"
-    echo "  --stop <id>             Send stop command to an already running lnxrouter. For an <id>"
-    echo "                          you can put the PID of lnxrouter or interface. You can"
-    echo "                          get them with --list-running"
-    echo "  --list-clients <id>     List the clients connected to lnxrouter instance associated with <id>."
-    echo "                          For an <id> you can put the PID of lnxrouter or interface."
-    echo "                          If virtual WiFi interface was created, then use that one."
-    echo "                          You can get them with --list-running"
-    echo
-    echo "Examples:"
-    echo "  "$PROGNAME" -i eth1"
-    echo "  "$PROGNAME" --ap wlan0 MyAccessPoint --password MyPassPhrase"
-    echo "  "$PROGNAME" --ap wlan0 MyAccessPoint"
-    echo "  "$PROGNAME" -n --ap wlan0 MyAccessPoint --password MyPassPhrase"
-    echo "  "$PROGNAME" --driver rtl871xdrv --ap wlan0 MyAccessPoint --password MyPassPhrase"
-    echo "  "$PROGNAME" -i eth1 --tp <transparent-proxy> --dns-proxy <dns-proxy>"
+    cat << EOF
+linux-router $VERSION (https://github.com/garywill/linux-router)
+
+Usage: $PROGNAME [options] 
+
+Options:
+    -h, --help              Show this help
+    --version               Print version number
+
+    -i <interface>          Interface to share Internet to.
+                            An NATed subnet is made upon it.
+                            To create Wifi hotspot use '--ap' instead
+    -n                      Disable Internet sharing
+    --tp <port>             Transparent proxy.
+                            redirect non-LAN tcp and udp traffic to port.
+                            Usually used with '--dns-proxy'
+    
+    -g <gateway>            Set gateway IPv4 address, netmask is /24 .
+                            (default: 192.168.18.1)
+    -6                      Enable IPv6 (NAT)
+    --p6 <prefix>           Set IPv6 prefix (length 64)
+                            (default: fd00:1:1:1:: )
+    --dns-proxy <port>      Redirect incoming port 53 to DNS proxy port.
+                            DNS server is disabled
+    --no-serve-dns          Disable DNS server
+    --no-dnsmasq            Disable dnsmasq server completely (DHCP, DNS, RA)
+    --log-dns               Show DNS server query log
+    --dhcp-dns <IP1[,IP2]>|no
+                            Set IPv4 DNS offered by DHCP 
+                            (default: gateway as DNS)
+    --dhcp-dns6 <IP1[,IP2]>|no
+                            Set IPv6 DNS offered by DHCP(RA) 
+                            (default: gateway as DNS)
+                            Note IPv6 addresses need '[]' around
+    -d                      DNS server will take into account /etc/hosts
+    -e <hosts_file>         DNS server will take into account additional 
+                            hosts file
+    
+    --mac <MAC>             Set MAC address
+ 
+  Wifi hotspot options:
+    --ap <wifi interface> <SSID>
+                            Create Wifi access point
+    --password <password>   Wifi password
+    
+    --hidden                Hide access point (not broadcast SSID)
+    --no-virt               Do not create virtual interface
+                            Using this you can't use same wlan interface
+                            for both Internet and AP
+    -c <channel>            Channel number (default: 1)
+    --country <code>        Set two-letter country code for regularity
+                            (example: US)
+    --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
+    --driver                Choose your WiFi adapter driver (default: nl80211)
+    -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both
+                            (default: 1+2)
+    --psk                   Use 64 hex digits pre-shared-key instead of
+                            passphrase
+    --mac-filter            Enable Wifi hotspot MAC address filtering
+    --mac-filter-accept     Location of Wifi hotspot MAC address filter list
+                            (defaults to /etc/hostapd/hostapd.accept)
+    --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
+    --isolate-clients       Disable wifi communication between clients
+    --ieee80211n            Enable IEEE 802.11n (HT)
+    --ieee80211ac           Enable IEEE 802.11ac (VHT)
+    --ht_capab <HT>         HT capabilities (default: [HT40+])
+    --vht_capab <VHT>       VHT capabilities
+    --no-haveged            Do not run haveged automatically when needed
+
+  Instance managing:
+    --daemon                Run in background
+    --list-running          Show running instances
+    --list-clients <id>     List clients of an instance
+    --stop <id>             Stop a running instance
+        For <id> you can use PID or subnet interface name.
+        You can get them with '--list-running'
+
+Examples:
+    $PROGNAME -i eth1
+    $PROGNAME --ap wlan0 MyAccessPoint
+    $PROGNAME --ap wlan0 MyAccessPoint --password MyPassPhrase
+    $PROGNAME -n --ap wlan0 MyAccessPoint --password MyPassPhrase
+    $PROGNAME -i eth1 --tp <transparent-proxy> --dns-proxy <dns-proxy>
+EOF
 }
 
 if [[ "$1" == "" ]]; then
@@ -87,8 +101,12 @@ if [[ "$1" == "" ]]; then
 fi
 
 GATEWAY=192.168.18.1
+PREFIX6=fd00:1:1:1::
+IID6=1
+IPV6=0
 ROUTE_ADDRS=
 DHCP_DNS=gateway
+DHCP_DNS6=gateway
 dnsmasq_NO_DNS=0
 NO_DNSMASQ=0
 SHOW_DNS_QUERY=0
@@ -164,6 +182,15 @@ while [[ -n "$1" ]]; do
             GATEWAY="$1"
             shift
             ;;
+        -6)
+            shift
+            IPV6=1
+            ;;
+        --p6)
+            shift
+            PREFIX6="$1"
+            shift
+            ;;
         --mac)
             shift
             NEW_MACADDR="$1"
@@ -186,6 +213,11 @@ while [[ -n "$1" ]]; do
         --dhcp-dns)
             shift
             DHCP_DNS="$1"
+            shift
+            ;;
+        --dhcp-dns6)
+            shift
+            DHCP_DNS6="$1"
             shift
             ;;
         --log-dns)
@@ -568,10 +600,15 @@ nm_restore_manage() {
 
 #=========
 
-alias iptables="iptables -w"
 iptables_()
 {
-    iptables $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    iptables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    return $?
+}
+ip6tables_()
+{
+    ip6tables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    return $?
 }
 
 start_nat() {
@@ -580,12 +617,22 @@ start_nat() {
     iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
     iptables_ -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
     iptables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -v -t nat -I POSTROUTING -s ${PREFIX6}/64 ! -d ${PREFIX6}/64 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
+        ip6tables_ -v -I FORWARD -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j ACCEPT || die
+        ip6tables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${PREFIX6}/64 -j ACCEPT || die
+    fi
 }
 stop_nat() {
     echo "iptables: stop NAT"
     iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
     iptables_ -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
     iptables_ -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -t nat -D POSTROUTING -s ${PREFIX6}/64 ! -d ${PREFIX6}/64 ! -o ${SUBNET_IFACE} -j MASQUERADE
+        ip6tables_ -D FORWARD -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j ACCEPT
+        ip6tables_ -D FORWARD -o ${SUBNET_IFACE} -d ${PREFIX6}/64 -j ACCEPT
+    fi
 }
 
 allow_dns_port() {
@@ -593,21 +640,35 @@ allow_dns_port() {
     echo "iptables: allow DNS port access"
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
+    fi
 }
 unallow_dns_port() {
     echo "iptables: stop allowing DNS"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT
+    fi
 }
 
 start_dhcp() {
     echo 
     echo "iptables: allow DHCP port access"
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT || die
+    fi
 }
 stop_dhcp() {
     echo "iptables: stop dhcp"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT
+    fi
 }
 
 redirect_dns() {
@@ -619,6 +680,15 @@ redirect_dns() {
     # redirect 53 to dns proxy
     iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
     iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
+    
+    if [[ $IPV6 -eq 1 ]]; then
+        # allow input to  dns proxy port
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT || die
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT || die
+        # redirect 53 to dns proxy
+        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
+        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die  
+    fi
 }
 unredirect_dns() {
     echo "iptables: stop dns proxy "
@@ -627,6 +697,14 @@ unredirect_dns() {
 
     iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
     iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+    
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
+
+        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+    fi
 }
 
 start_redsocks() {
@@ -640,6 +718,7 @@ start_redsocks() {
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
+    
     iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
     iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
@@ -647,6 +726,24 @@ start_redsocks() {
 
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+    
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
+        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d fc00::/7 -j RETURN || die
+        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d fe80::/10 -j RETURN || die
+        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d ff00::/8 -j RETURN || die
+        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d ::1 -j RETURN || die
+        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d :: -j RETURN || die
+        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0100::/64 -j RETURN || die
+
+        ip6tables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+        ip6tables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+
+        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j REDSOCKS-${SUBNET_IFACE} || die
+
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
+    fi
 }
 stop_redsocks() {
     echo "iptables: stop transparent proxy"
@@ -656,6 +753,15 @@ stop_redsocks() {
     
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
+    
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64  -j REDSOCKS-${SUBNET_IFACE}
+        ip6tables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
+        ip6tables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
+        
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
+    fi
 }
 
 kill_processes() {
@@ -676,11 +782,13 @@ kill_processes() {
 _cleanup() {
     local x
 
-    nm_restore_manage
-
-    rm -rf $CONFDIR
-
     ip addr flush ${SUBNET_IFACE}
+    
+    if [[ $IPV6 -eq 1 ]]; then
+        cp -f $CONFDIR/sys_6_conf_iface/* /proc/sys/net/ipv6/conf/$SUBNET_IFACE/
+    fi
+    rm -rf $CONFDIR
+    
     if [[ $WIFI_IFACE && $NO_VIRT -eq 0 ]]; then
         ip link set down dev ${AP_IFACE}
         iw dev ${VWIFI_IFACE} del
@@ -691,21 +799,14 @@ _cleanup() {
         fi
     fi
     
-    # if we are the last lnxrouter instance then set back the common values
+    
     if ! has_running_instance; then
         echo "Exiting: This is the only running instance"
         # kill common processes
         for x in $COMMON_CONFDIR/*.pid; do
             [[ -f $x ]] && kill -9 $(cat $x) && rm $x
         done
-
-        # set old ip_forward
-        if [[ -f $COMMON_CONFDIR/ip_forward ]]; then
-            echo "Set to old value: /proc/sys/net/ipv4/ip_forward=$(cat $COMMON_CONFDIR/ip_forward)"
-            cp -f $COMMON_CONFDIR/ip_forward /proc/sys/net/ipv4
-            rm -f $COMMON_CONFDIR/ip_forward
-        fi
-
+        
         rm -d $COMMON_CONFDIR/ifaces
         rm -d $COMMON_CONFDIR
         rm -d $TMPDIR
@@ -713,7 +814,7 @@ _cleanup() {
         echo "Exiting: This is NOT the only running instance"
     fi
     
-
+    nm_restore_manage
 }
 
 clean_iptables() {
@@ -724,7 +825,7 @@ clean_iptables() {
         stop_redsocks
     fi
     
-    if [[ "$DHCP_DNS" == "gateway" ]]; then
+    if [[ "$DHCP_DNS" == "gateway" || "$DHCP_DNS6" == "gateway" ]]; then
         unallow_dns_port
     fi
     
@@ -933,6 +1034,14 @@ if [[ $SHARE_METHOD == 'none' ]]; then
     dnsmasq_NO_DNS=1
 fi
 
+if [[ $IPV6 -eq 1 ]]; then
+    GATEWAY6=${PREFIX6}${IID6}
+fi
+
+if [[ $DHCP_DNS != 'gateway' && $DHCP_DNS6 != 'gateway' ]]; then
+    dnsmasq_NO_DNS=1
+fi
+
 if [[ -d /dev/shm ]]; then
     TMPD=/dev/shm
 elif [[ -d /run/shm ]]; then
@@ -1098,7 +1207,6 @@ echo $$ > $CONFDIR/pid
 COMMON_CONFDIR=$TMPDIR/lnxrouter_common.conf
 mkdir -p $COMMON_CONFDIR
 
-cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
 
 
 if [[ $WIFI_IFACE ]]; then
@@ -1176,23 +1284,23 @@ if [[ $WIFI_IFACE ]]; then
     [[ $ISOLATE_CLIENTS -eq 1 ]] && echo "Access Point's clients will be isolated!"
 
     # hostapd config
-    cat << EOF > $CONFDIR/hostapd.conf
-beacon_int=100
-ssid=${SSID}
-interface=${AP_IFACE}
-driver=${DRIVER}
-channel=${CHANNEL}
-ctrl_interface=$CONFDIR/hostapd_ctrl
-ctrl_interface_group=0
-ignore_broadcast_ssid=$HIDDEN
-ap_isolate=$ISOLATE_CLIENTS
-EOF
+    cat <<- EOF > $CONFDIR/hostapd.conf
+		beacon_int=100
+		ssid=${SSID}
+		interface=${AP_IFACE}
+		driver=${DRIVER}
+		channel=${CHANNEL}
+		ctrl_interface=$CONFDIR/hostapd_ctrl
+		ctrl_interface_group=0
+		ignore_broadcast_ssid=$HIDDEN
+		ap_isolate=$ISOLATE_CLIENTS
+	EOF
 
     if [[ -n "$COUNTRY" ]]; then
-        cat << EOF >> $CONFDIR/hostapd.conf
-country_code=${COUNTRY}
-ieee80211d=1
-EOF
+        cat <<- EOF >> $CONFDIR/hostapd.conf
+			country_code=${COUNTRY}
+			ieee80211d=1
+		EOF
     fi
 
     if [[ $FREQ_BAND == 2.4 ]]; then
@@ -1202,17 +1310,17 @@ EOF
     fi
 
     if [[ $MAC_FILTER -eq 1 ]]; then
-        cat << EOF >> $CONFDIR/hostapd.conf
-macaddr_acl=${MAC_FILTER}
-accept_mac_file=${MAC_FILTER_ACCEPT}
-EOF
+        cat <<- EOF >> $CONFDIR/hostapd.conf
+			macaddr_acl=${MAC_FILTER}
+			accept_mac_file=${MAC_FILTER_ACCEPT}
+		EOF
     fi
 
     if [[ $IEEE80211N -eq 1 ]]; then
-        cat << EOF >> $CONFDIR/hostapd.conf
-ieee80211n=1
-ht_capab=${HT_CAPAB}
-EOF
+        cat <<- EOF >> $CONFDIR/hostapd.conf
+			ieee80211n=1
+			ht_capab=${HT_CAPAB}
+		EOF
     fi
 
     if [[ $IEEE80211AC -eq 1 ]]; then
@@ -1234,17 +1342,17 @@ EOF
         else
             WPA_KEY_TYPE=psk
         fi
-        cat << EOF >> $CONFDIR/hostapd.conf
-wpa=${WPA_VERSION}
-wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
-wpa_key_mgmt=WPA-PSK
-wpa_pairwise=TKIP CCMP
-rsn_pairwise=CCMP
-EOF
+        cat <<- EOF >> $CONFDIR/hostapd.conf
+			wpa=${WPA_VERSION}
+			wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
+			wpa_key_mgmt=WPA-PSK
+			wpa_pairwise=TKIP CCMP
+			rsn_pairwise=CCMP
+		EOF
     else
         echo "WARN: Wifi is not protected by password" >&2
     fi
-chmod 600 $CONFDIR/hostapd.conf
+	chmod 600 $CONFDIR/hostapd.conf
 fi
 
 #===================================================
@@ -1255,32 +1363,29 @@ if [[ $NM_RUNNING -eq 1 ]] && nm_knows $TARGET_IFACE ; then
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
-    # dnsmasq config (dhcp + dns)
-    cat << EOF > $CONFDIR/dnsmasq.conf
-user=nobody
-group=nobody
-bind-dynamic
-listen-address=${GATEWAY}
-interface=$SUBNET_IFACE
-except-interface=lo
-no-dhcp-interface=lo
-dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
-dhcp-option-force=option:router,${GATEWAY}
-#log-dhcp
-log-facility=/dev/null
-EOF
-# 'log-dhcp' show too much logs. Using '-d' in dnsmasq command shows a proper dhcp log
-# if use '-d', 'log-facility' should = /dev/null
+    cat <<- EOF > $CONFDIR/dnsmasq.conf
+		user=nobody
+		group=nobody
+		bind-dynamic
+		listen-address=${GATEWAY}
+		interface=$SUBNET_IFACE
+		except-interface=lo
+		no-dhcp-interface=lo
+		dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
+		dhcp-option-force=option:router,${GATEWAY}
+		#log-dhcp
+		log-facility=/dev/null
+		bogus-priv
+	EOF
+	# 'log-dhcp' show too much logs. Using '-d' in dnsmasq command shows a proper dhcp log
+	# if use '-d', 'log-facility' should = /dev/null
     if [[ "$DHCP_DNS" != "no" ]]; then
         if [[ "$DHCP_DNS" == "gateway" ]]; then
             dns_offer="$GATEWAY"
         else
             dns_offer="$DHCP_DNS"
-            dnsmasq_NO_DNS=1
         fi
         echo "dhcp-option-force=option:dns-server,${dns_offer}" >> $CONFDIR/dnsmasq.conf
-    else
-        dnsmasq_NO_DNS=1
     fi
     
     if [[ ! "$dnsmasq_NO_DNS" -eq 0 ]]; then
@@ -1292,6 +1397,22 @@ EOF
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
     if [[ ! "$SHOW_DNS_QUERY" -eq 0 ]]; then
         echo log-queries=extra >> $CONFDIR/dnsmasq.conf
+    fi
+    if [[ $IPV6 -eq 1 ]];then
+        cat <<- EOF  >> $CONFDIR/dnsmasq.conf
+			listen-address=${GATEWAY6}
+			enable-ra
+			#quiet-ra
+			dhcp-range=interface:${SUBNET_IFACE},::,::ffff:ffff:ffff:ffff,constructor:${SUBNET_IFACE},ra-stateless,64
+		EOF
+        if [[ "$DHCP_DNS6" != "no" ]]; then
+            if [[ "$DHCP_DNS6" == "gateway" ]]; then
+                dns_offer6="[$GATEWAY6]"
+            else
+                dns_offer6="$DHCP_DNS6"
+            fi
+            echo "dhcp-option=option6:dns-server,${dns_offer6}" >> $CONFDIR/dnsmasq.conf
+        fi
     fi
 fi
 
@@ -1341,6 +1462,19 @@ if [[ $WIFI_IFACE ]]; then
 fi
 
 ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IP"
+if [[ $IPV6 -eq 1 ]]; then
+    mkdir $CONFDIR/sys_6_conf_iface
+    cp /proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra     \
+        /proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr  \
+        /proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode \
+            $CONFDIR/sys_6_conf_iface/
+    
+    echo 0 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra
+    echo 0 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr
+    echo 0 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode
+    
+    ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6"
+fi
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
@@ -1348,10 +1482,16 @@ if [[ "$SHARE_METHOD" == "none" ]]; then
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
     start_nat
     echo 1 > /proc/sys/net/ipv4/ip_forward || die "Failed enabling system ipv4 forwarding"
+    if [[ $IPV6 -eq 1 ]]; then
+        echo 1 > /proc/sys/net/ipv6/conf/all/forwarding || die "Failed enabling system ipv6 forwarding"
+    fi
     # to enable clients to establish PPTP connections we must
     # load nf_nat_pptp module
     modprobe nf_nat_pptp > /dev/null 2>&1
 elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
+    if [[ $IPV6 -eq 1 ]]; then
+        echo 1 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding || die "Failed enabling $SUBNET_IFACE ipv6 forwarding"
+    fi
     if [[ "$dnsmasq_NO_DNS" -eq 0 ]]; then
         echo 
         echo "WARN: You are using transparent proxy but gateway is providing local DNS, this may cause privacy leak !!!" >&2
@@ -1362,7 +1502,7 @@ fi
 
 # start dhcp + dns (optional)
 
-if [[ "$DHCP_DNS" == "gateway" ]]; then
+if [[ "$DHCP_DNS" == "gateway" || "$DHCP_DNS6" == "gateway" ]]; then
     allow_dns_port
 fi
 
