@@ -6,7 +6,7 @@
 #    iproute2
 #    dnsmasq
 #    iptables
-
+#  wifi ap:
 #    hostapd
 #    iw
 #    iwconfig (you only need this if 'iw' can not recognize your adapter)
@@ -27,7 +27,8 @@ umask $SCRIPT_UMASK
 
 usage() {
     echo "$PROGNAME $VERSION (https://github.com/garywill/linux-router)"
-    echo "$PROGNAME is a fork of create_ap(https://github.com/oblique/create_ap)"
+    echo "Share your Linux's Internet access to other devices. "
+    echo "Work on wired, wireless and virtual networks."
     echo 
     echo "Usage: "$PROGNAME" [options] "
     echo
@@ -41,6 +42,8 @@ usage() {
     #echo "                          Use: 'nat' for NAT (default)"
     #echo "                               'redsocks' for transparent proxy. Usually use with --dns-proxy"
     #echo "                               'none' for no Internet sharing (equivalent to -n)"
+    echo "  -i <interface>          Interface to share Internet to. An NATed subnet will be made on it."
+    echo "                          To create Wifi hotspot use --ap instead"
     echo "  -n                      Disable Internet sharing"
     echo "  --tp <port>             Transparent proxy (redsocks), redirect tcp and udp traffic to port."
     echo "                          Usually use with --dns-proxy"
@@ -80,9 +83,6 @@ usage() {
     echo "  --ht_capab <HT>         HT capabilities (default: [HT40+])"
     echo "  --vht_capab <VHT>       VHT capabilities"
     echo "  --no-haveged            Do not run 'haveged' automatically when needed"
-    echo "  --fix-unmanaged         If NetworkManager shows your interface as unmanaged after you"
-    echo "                          close lnxrouter, then use this option to switch your interface"
-    echo "                          back to managed"
     echo
     echo " Instance managing:"
     echo "  --daemon                Run lnxrouter in the background"
@@ -94,17 +94,21 @@ usage() {
     echo "                          For an <id> you can put the PID of lnxrouter or interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
+    echo
+    echo " Tools:"
+    echo "  --fix-unmanaged         If NetworkManager shows your interface as unmanaged after you"
+    echo "                          close lnxrouter, then use this option to switch your interface"
+    echo "                          back to managed"
 
     echo
     echo
     echo "Examples:"
+    echo "  "$PROGNAME" -i eth1"
     echo "  "$PROGNAME" --ap wlan0 MyAccessPoint --password MyPassPhrase"
     echo "  "$PROGNAME" --ap wlan0 MyAccessPoint"
     echo "  "$PROGNAME" -n --ap wlan0 MyAccessPoint --password MyPassPhrase"
     echo "  "$PROGNAME" --driver rtl871xdrv --ap wlan0 MyAccessPoint --password MyPassPhrase"
-    echo "  "$PROGNAME" --daemon --ap wlan0 MyAccessPoint --password MyPassPhrase"
-    echo "  "$PROGNAME" --stop wlan0"
-    echo "  "$PROGNAME" --ap wlan0 MyAccessPoint --password MyPassPhrase --tp <transparent-proxy> --dns-proxy <dns-proxy>"
+    echo "  "$PROGNAME" -i eth1 --tp <transparent-proxy> --dns-proxy <dns-proxy>"
 }
 
 if [[ "$1" == "" ]]; then
@@ -121,6 +125,7 @@ SHOW_DNS_QUERY=0
 ETC_HOSTS=0
 ADDN_HOSTS=
 SUBNET_IFACE=
+CONN_IFACE=
 
 ISOLATE_CLIENTS=0
 SHARE_METHOD=nat
@@ -169,6 +174,11 @@ while [[ -n "$1" ]]; do
         --version)
             echo $VERSION
             exit 0
+            ;;
+        -i)
+            shift
+            CONN_IFACE="$1"
+            shift
             ;;
         -n)
             shift
@@ -504,7 +514,7 @@ is_wifi_interface() {
 
 
 
-get_phy_device() {
+get_phy_device() { # only for wifi interface
     local x
     for x in /sys/class/ieee80211/*; do
         [[ ! -e "$x" ]] && continue
@@ -523,7 +533,7 @@ get_phy_device() {
     return 1
 }
 
-get_adapter_info() {
+get_adapter_info() { # only for wifi interface
     local PHY
     PHY=$(get_phy_device "$1")
     [[ $? -ne 0 ]] && return 1
@@ -630,7 +640,7 @@ get_macaddr() {
 }
 
 
-alloc_new_iface() {
+alloc_new_iface() { # only for wifi
     local i=0
     local v_iface_name=
     mutex_lock
@@ -839,7 +849,12 @@ networkmanager_fix_unmanaged() {
 }
 
 networkmanager_rm_unmanaged_if_needed() {
-    [[ $ADDED_UNMANAGED =~ .*\ ${1}\ .* ]] && networkmanager_rm_unmanaged $1 $2
+    if [[ $ADDED_UNMANAGED =~ .*\ ${1}\ .* ]]; then
+        echo "$1 needs to remove unmanaged"
+        networkmanager_rm_unmanaged $1 $2
+    else
+        echo "$1 doesn't need to remove unmanaged"
+    fi
 }
 
 networkmanager_wait_until_unmanaged() {
@@ -977,17 +992,18 @@ _cleanup() {
         echo "Exiting: This is NOT the only running instance"
     fi
     
-    ip link set down dev ${AP_IFACE}
-    ip addr flush ${AP_IFACE}
-    if [[ $NO_VIRT -eq 0 ]]; then
+
+    ip addr flush ${SUBNET_IFACE}
+    if [[ $WIFI_IFACE && $NO_VIRT -eq 0 ]]; then
+        ip link set down dev ${AP_IFACE}
         networkmanager_rm_unmanaged_if_needed ${VWIFI_IFACE} ${OLD_MACADDR}
         iw dev ${VWIFI_IFACE} del
         dealloc_iface $VWIFI_IFACE
     else
         if [[ -n "$NEW_MACADDR" ]]; then
-            ip link set dev ${WIFI_IFACE} address ${OLD_MACADDR}
+            ip link set dev ${TARGET_IFACE} address ${OLD_MACADDR} && echo "Restore ${TARGET_IFACE} to old MAC address ${OLD_MACADDR}"
         fi
-        networkmanager_rm_unmanaged_if_needed ${WIFI_IFACE} ${OLD_MACADDR}
+        networkmanager_rm_unmanaged_if_needed ${TARGET_IFACE} ${OLD_MACADDR}
     fi
 
     mutex_unlock
@@ -1214,6 +1230,9 @@ trap "clean_exit" SIGINT SIGUSR1
 # if we get USR2 signal then run die().
 trap "die" SIGUSR2
 
+## ========================================================
+## ========================================================
+
 if [[ $TP_PORT ]]; then
     SHARE_METHOD=redsocks
 fi
@@ -1261,64 +1280,90 @@ if [[ $DAEMONIZE -eq 1 && $RUNNING_AS_DAEMON -eq 0 ]]; then
     exit 0
 fi
 
-if [[ $FREQ_BAND != 2.4 && $FREQ_BAND != 5 ]]; then
-    echo "ERROR: Invalid frequency band" >&2
-    exit 1
-fi
+if [[ $WIFI_IFACE ]]; then
 
-if [[ $CHANNEL == default ]]; then
-    if [[ $FREQ_BAND == 2.4 ]]; then
-        CHANNEL=1
-    else
-        CHANNEL=36
-    fi
-fi
-
-if [[ $FREQ_BAND != 5 && $CHANNEL -gt 14 ]]; then
-    echo "Channel number is greater than 14, assuming 5GHz frequency band"
-    FREQ_BAND=5
-fi
-
-
-if ! is_wifi_interface ${WIFI_IFACE}; then
-    echo "ERROR: '${WIFI_IFACE}' is not a WiFi interface" >&2
-    exit 1
-fi
-
-if ! can_be_ap ${WIFI_IFACE}; then
-    echo "ERROR: Your adapter does not support AP (master) mode" >&2
-    exit 1
-fi
-
-if ! can_be_sta_and_ap ${WIFI_IFACE}; then
-    if is_wifi_connected ${WIFI_IFACE}; then
-        echo "ERROR: Your adapter can not be a station (i.e. be connected) and an AP at the same time" >&2
-        exit 1
-    elif [[ $NO_VIRT -eq 0 ]]; then
-        echo "WARN: Your adapter does not fully support AP virtual interface, enabling --no-virt" >&2
-        NO_VIRT=1
-    fi
-fi
-
-HOSTAPD=$(which hostapd)
-
-if [[ ! -x "$HOSTAPD" ]]; then
-    echo "ERROR: hostapd not found." >&2
-    exit 1
-fi
-
-if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^(8192[cd][ue]|8723a[sue])$ ]]; then
-    if ! strings "$HOSTAPD" | grep -m1 rtl871xdrv > /dev/null 2>&1; then
-        echo "ERROR: You need to patch your hostapd with rtl871xdrv patches." >&2
+    if [[ $FREQ_BAND != 2.4 && $FREQ_BAND != 5 ]]; then
+        echo "ERROR: Invalid frequency band" >&2
         exit 1
     fi
 
-    if [[ $DRIVER != "rtl871xdrv" ]]; then
-        echo "WARN: Your adapter needs rtl871xdrv, enabling --driver=rtl871xdrv" >&2
-        DRIVER=rtl871xdrv
+    if [[ $CHANNEL == default ]]; then
+        if [[ $FREQ_BAND == 2.4 ]]; then
+            CHANNEL=1
+        else
+            CHANNEL=36
+        fi
     fi
-fi
 
+    if [[ $FREQ_BAND != 5 && $CHANNEL -gt 14 ]]; then
+        echo "Channel number is greater than 14, assuming 5GHz frequency band"
+        FREQ_BAND=5
+    fi
+
+
+    if ! is_wifi_interface ${WIFI_IFACE}; then
+        echo "ERROR: '${WIFI_IFACE}' is not a WiFi interface" >&2
+        exit 1
+    fi
+
+    if ! can_be_ap ${WIFI_IFACE}; then
+        echo "ERROR: Your adapter does not support AP (master) mode" >&2
+        exit 1
+    fi
+
+    if ! can_be_sta_and_ap ${WIFI_IFACE}; then
+        if is_wifi_connected ${WIFI_IFACE}; then
+            echo "ERROR: Your adapter can not be a station (i.e. be connected) and an AP at the same time" >&2
+            exit 1
+        elif [[ $NO_VIRT -eq 0 ]]; then
+            echo "WARN: Your adapter does not fully support AP virtual interface, enabling --no-virt" >&2
+            NO_VIRT=1
+        fi
+    fi
+
+    HOSTAPD=$(which hostapd)
+
+    if [[ ! -x "$HOSTAPD" ]]; then
+        echo "ERROR: hostapd not found." >&2
+        exit 1
+    fi
+
+    if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^(8192[cd][ue]|8723a[sue])$ ]]; then
+        if ! strings "$HOSTAPD" | grep -m1 rtl871xdrv > /dev/null 2>&1; then
+            echo "ERROR: You need to patch your hostapd with rtl871xdrv patches." >&2
+            exit 1
+        fi
+
+        if [[ $DRIVER != "rtl871xdrv" ]]; then
+            echo "WARN: Your adapter needs rtl871xdrv, enabling --driver=rtl871xdrv" >&2
+            DRIVER=rtl871xdrv
+        fi
+    fi
+    
+    if [[ ${#SSID} -lt 1 || ${#SSID} -gt 32 ]]; then
+        echo "ERROR: Invalid SSID length ${#SSID} (expected 1..32)" >&2
+        exit 1
+    fi
+
+    if [[ $USE_PSK -eq 0 ]]; then
+        if [[ ${#PASSPHRASE} -gt 0 && ${#PASSPHRASE} -lt 8 ]] || [[ ${#PASSPHRASE} -gt 63 ]]; then
+            echo "ERROR: Invalid passphrase length ${#PASSPHRASE} (expected 8..63)" >&2
+            exit 1
+        fi
+    elif [[ ${#PASSPHRASE} -gt 0 && ${#PASSPHRASE} -ne 64 ]]; then
+        echo "ERROR: Invalid pre-shared-key length ${#PASSPHRASE} (expected 64)" >&2
+        exit 1
+    fi
+
+    if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^rtl[0-9].*$ ]]; then
+        if [[ -n "$PASSPHRASE" ]]; then
+            echo "WARN: Realtek drivers usually have problems with WPA1, enabling -w 2" >&2
+            WPA_VERSION=2
+        fi
+        echo "WARN: If AP doesn't work, please read: howto/realtek.md" >&2
+    fi
+
+fi
 
 if [[ -n "$NEW_MACADDR" ]]; then
     if ! is_macaddr "$NEW_MACADDR"; then
@@ -1336,35 +1381,21 @@ if [[ -n "$NEW_MACADDR" ]]; then
     fi
 fi
 
-
-
-if [[ ${#SSID} -lt 1 || ${#SSID} -gt 32 ]]; then
-    echo "ERROR: Invalid SSID length ${#SSID} (expected 1..32)" >&2
-    exit 1
+## ========================================================
+## ========================================================
+TARGET_IFACE=   # This is the existing physical interface to use
+if [[ $CONN_IFACE ]]; then
+    TARGET_IFACE=$CONN_IFACE
+elif [[ $WIFI_IFACE ]]; then
+    TARGET_IFACE=$WIFI_IFACE
+else
+    die "No target interface specified"
 fi
-
-if [[ $USE_PSK -eq 0 ]]; then
-    if [[ ${#PASSPHRASE} -gt 0 && ${#PASSPHRASE} -lt 8 ]] || [[ ${#PASSPHRASE} -gt 63 ]]; then
-        echo "ERROR: Invalid passphrase length ${#PASSPHRASE} (expected 8..63)" >&2
-        exit 1
-    fi
-elif [[ ${#PASSPHRASE} -gt 0 && ${#PASSPHRASE} -ne 64 ]]; then
-    echo "ERROR: Invalid pre-shared-key length ${#PASSPHRASE} (expected 64)" >&2
-    exit 1
-fi
-
-if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^rtl[0-9].*$ ]]; then
-    if [[ -n "$PASSPHRASE" ]]; then
-        echo "WARN: Realtek drivers usually have problems with WPA1, enabling -w 2" >&2
-        WPA_VERSION=2
-    fi
-    echo "WARN: If AP doesn't work, please read: howto/realtek.md" >&2
-fi
-
+echo "Target interface is ${TARGET_IFACE}"
 
 mutex_lock
 trap "cleanup" EXIT
-CONFDIR=$(mktemp -d /tmp/lnxrouter.${WIFI_IFACE}.conf.XXXXXXXX)
+CONFDIR=$(mktemp -d /tmp/lnxrouter.${TARGET_IFACE}.conf.XXXXXXXX)
 echo "Config dir: $CONFDIR"
 echo "PID: $$"
 echo $$ > $CONFDIR/pid
@@ -1381,94 +1412,93 @@ cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
 
 mutex_unlock
 
+if [[ $WIFI_IFACE ]]; then
 
+    if [[ $USE_IWCONFIG -eq 0 ]]; then
+        iw dev ${WIFI_IFACE} set power_save off
+    fi
 
-if [[ $USE_IWCONFIG -eq 0 ]]; then
-    iw dev ${WIFI_IFACE} set power_save off
+    if [[ $NO_VIRT -eq 0 ]]; then
+        VWIFI_IFACE=$(alloc_new_iface)
+
+        # in NetworkManager 0.9.9 and above we can set the interface as unmanaged without
+        # the need of MAC address, so we set it before we create the virtual interface.
+        if networkmanager_is_running && [[ $NM_OLDER_VERSION -eq 0 ]]; then
+            echo -n "Network Manager found, set ${VWIFI_IFACE} as unmanaged device... "
+            networkmanager_add_unmanaged ${VWIFI_IFACE}
+            # do not call networkmanager_wait_until_unmanaged because interface does not
+            # exist yet
+        fi
+
+        if is_wifi_connected ${WIFI_IFACE}; then
+            WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
+            WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
+            echo -n "${WIFI_IFACE} is already associated with channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
+            if is_5ghz_frequency $WIFI_IFACE_FREQ; then
+                FREQ_BAND=5
+            else
+                FREQ_BAND=2.4
+            fi
+            if [[ $WIFI_IFACE_CHANNEL -ne $CHANNEL ]]; then
+                echo ", fallback to channel ${WIFI_IFACE_CHANNEL}"
+                CHANNEL=$WIFI_IFACE_CHANNEL
+            else
+                echo
+            fi
+        fi
+
+        VIRTDIEMSG="Maybe your WiFi adapter does not fully support virtual interfaces.
+        Try again with --no-virt."
+        echo -n "Creating a virtual WiFi interface... "
+
+        if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
+            # now we can call networkmanager_wait_until_unmanaged
+            networkmanager_is_running && [[ $NM_OLDER_VERSION -eq 0 ]] && networkmanager_wait_until_unmanaged ${VWIFI_IFACE}
+            echo "${VWIFI_IFACE} created."
+        else
+            VWIFI_IFACE=
+            die "$VIRTDIEMSG"
+        fi
+        OLD_MACADDR=$(get_macaddr ${VWIFI_IFACE})
+        if [[ -z "$NEW_MACADDR" && $(get_all_macaddrs | grep -c ${OLD_MACADDR}) -ne 1 ]]; then
+            NEW_MACADDR=$(get_new_macaddr ${VWIFI_IFACE})
+        fi
+        AP_IFACE=${VWIFI_IFACE}
+    else
+        OLD_MACADDR=$(get_macaddr ${WIFI_IFACE})
+        AP_IFACE=${WIFI_IFACE}
+    fi
+
 fi
 
-if [[ $NO_VIRT -eq 0 ]]; then
-    VWIFI_IFACE=$(alloc_new_iface)
-
-    # in NetworkManager 0.9.9 and above we can set the interface as unmanaged without
-    # the need of MAC address, so we set it before we create the virtual interface.
-    if networkmanager_is_running && [[ $NM_OLDER_VERSION -eq 0 ]]; then
-        echo -n "Network Manager found, set ${VWIFI_IFACE} as unmanaged device... "
-        networkmanager_add_unmanaged ${VWIFI_IFACE}
-        # do not call networkmanager_wait_until_unmanaged because interface does not
-        # exist yet
-        echo "DONE"
-    fi
-
-    if is_wifi_connected ${WIFI_IFACE}; then
-        WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
-        WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
-        echo -n "${WIFI_IFACE} is already associated with channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
-        if is_5ghz_frequency $WIFI_IFACE_FREQ; then
-            FREQ_BAND=5
-        else
-            FREQ_BAND=2.4
-        fi
-        if [[ $WIFI_IFACE_CHANNEL -ne $CHANNEL ]]; then
-            echo ", fallback to channel ${WIFI_IFACE_CHANNEL}"
-            CHANNEL=$WIFI_IFACE_CHANNEL
-        else
-            echo
-        fi
-    fi
-
-    VIRTDIEMSG="Maybe your WiFi adapter does not fully support virtual interfaces.
-       Try again with --no-virt."
-    echo -n "Creating a virtual WiFi interface... "
-
-    if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
-        # now we can call networkmanager_wait_until_unmanaged
-        networkmanager_is_running && [[ $NM_OLDER_VERSION -eq 0 ]] && networkmanager_wait_until_unmanaged ${VWIFI_IFACE}
-        echo "${VWIFI_IFACE} created."
-    else
-        VWIFI_IFACE=
-        die "$VIRTDIEMSG"
-    fi
-    OLD_MACADDR=$(get_macaddr ${VWIFI_IFACE})
-    if [[ -z "$NEW_MACADDR" && $(get_all_macaddrs | grep -c ${OLD_MACADDR}) -ne 1 ]]; then
-        NEW_MACADDR=$(get_new_macaddr ${VWIFI_IFACE})
-    fi
-    AP_IFACE=${VWIFI_IFACE}
+if [[ $WIFI_IFACE ]]; then
+    SUBNET_IFACE=${AP_IFACE}
 else
-    OLD_MACADDR=$(get_macaddr ${WIFI_IFACE})
-    AP_IFACE=${WIFI_IFACE}
+    SUBNET_IFACE=${TARGET_IFACE}
 fi
 
 mutex_lock
-echo $AP_IFACE > $CONFDIR/subn_iface
+echo $SUBNET_IFACE > $CONFDIR/subn_iface
 chmod 444 $CONFDIR/subn_iface
 mutex_unlock
 
-if [[ -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
-    iw reg set "$COUNTRY"
-fi
+if [[ $WIFI_IFACE ]]; then
 
-can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
-
-if networkmanager_exists && ! networkmanager_iface_is_unmanaged ${AP_IFACE}; then
-    echo -n "Network Manager found, set ${AP_IFACE} as unmanaged device... "
-    networkmanager_add_unmanaged ${AP_IFACE}
-
-    if networkmanager_is_running; then
-        networkmanager_wait_until_unmanaged ${AP_IFACE}
+    if [[ -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
+        iw reg set "$COUNTRY"
     fi
 
-    echo "DONE"
-fi
+    can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
 
-[[ $HIDDEN -eq 1 ]] && echo "Access Point's SSID is hidden!"
 
-[[ $MAC_FILTER -eq 1 ]] && echo "MAC address filtering is enabled!"
+    [[ $HIDDEN -eq 1 ]] && echo "Access Point's SSID is hidden!"
 
-[[ $ISOLATE_CLIENTS -eq 1 ]] && echo "Access Point's clients will be isolated!"
+    [[ $MAC_FILTER -eq 1 ]] && echo "MAC address filtering is enabled!"
 
-# hostapd config
-cat << EOF > $CONFDIR/hostapd.conf
+    [[ $ISOLATE_CLIENTS -eq 1 ]] && echo "Access Point's clients will be isolated!"
+
+    # hostapd config
+    cat << EOF > $CONFDIR/hostapd.conf
 beacon_int=100
 ssid=${SSID}
 interface=${AP_IFACE}
@@ -1480,64 +1510,78 @@ ignore_broadcast_ssid=$HIDDEN
 ap_isolate=$ISOLATE_CLIENTS
 EOF
 
-if [[ -n "$COUNTRY" ]]; then
-    cat << EOF >> $CONFDIR/hostapd.conf
+    if [[ -n "$COUNTRY" ]]; then
+        cat << EOF >> $CONFDIR/hostapd.conf
 country_code=${COUNTRY}
 ieee80211d=1
 EOF
-fi
+    fi
 
-if [[ $FREQ_BAND == 2.4 ]]; then
-    echo "hw_mode=g" >> $CONFDIR/hostapd.conf
-else
-    echo "hw_mode=a" >> $CONFDIR/hostapd.conf
-fi
+    if [[ $FREQ_BAND == 2.4 ]]; then
+        echo "hw_mode=g" >> $CONFDIR/hostapd.conf
+    else
+        echo "hw_mode=a" >> $CONFDIR/hostapd.conf
+    fi
 
-if [[ $MAC_FILTER -eq 1 ]]; then
-    cat << EOF >> $CONFDIR/hostapd.conf
+    if [[ $MAC_FILTER -eq 1 ]]; then
+        cat << EOF >> $CONFDIR/hostapd.conf
 macaddr_acl=${MAC_FILTER}
 accept_mac_file=${MAC_FILTER_ACCEPT}
 EOF
-fi
+    fi
 
-if [[ $IEEE80211N -eq 1 ]]; then
-    cat << EOF >> $CONFDIR/hostapd.conf
+    if [[ $IEEE80211N -eq 1 ]]; then
+        cat << EOF >> $CONFDIR/hostapd.conf
 ieee80211n=1
 ht_capab=${HT_CAPAB}
 EOF
-fi
-
-if [[ $IEEE80211AC -eq 1 ]]; then
-    echo "ieee80211ac=1" >> $CONFDIR/hostapd.conf
-fi
-
-if [[ -n "$VHT_CAPAB" ]]; then
-    echo "vht_capab=${VHT_CAPAB}" >> $CONFDIR/hostapd.conf
-fi
-
-if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]]; then
-    echo "wmm_enabled=1" >> $CONFDIR/hostapd.conf
-fi
-
-if [[ -n "$PASSPHRASE" ]]; then
-    [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
-    if [[ $USE_PSK -eq 0 ]]; then
-        WPA_KEY_TYPE=passphrase
-    else
-        WPA_KEY_TYPE=psk
     fi
-    cat << EOF >> $CONFDIR/hostapd.conf
+
+    if [[ $IEEE80211AC -eq 1 ]]; then
+        echo "ieee80211ac=1" >> $CONFDIR/hostapd.conf
+    fi
+
+    if [[ -n "$VHT_CAPAB" ]]; then
+        echo "vht_capab=${VHT_CAPAB}" >> $CONFDIR/hostapd.conf
+    fi
+
+    if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]]; then
+        echo "wmm_enabled=1" >> $CONFDIR/hostapd.conf
+    fi
+
+    if [[ -n "$PASSPHRASE" ]]; then
+        [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
+        if [[ $USE_PSK -eq 0 ]]; then
+            WPA_KEY_TYPE=passphrase
+        else
+            WPA_KEY_TYPE=psk
+        fi
+        cat << EOF >> $CONFDIR/hostapd.conf
 wpa=${WPA_VERSION}
 wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
 wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP CCMP
 rsn_pairwise=CCMP
 EOF
-else
-    echo "Warning: Wifi is not protected by password" >&2
+    else
+        echo "Warning: Wifi is not protected by password" >&2
+    fi
+
 fi
 
-SUBNET_IFACE=${AP_IFACE}
+#===================================================
+#===================================================
+
+if networkmanager_exists && ! networkmanager_iface_is_unmanaged ${SUBNET_IFACE}; then
+    echo -n "Network Manager found, set ${SUBNET_IFACE} as unmanaged device... "
+    networkmanager_add_unmanaged ${SUBNET_IFACE}
+
+    if networkmanager_is_running; then
+        networkmanager_wait_until_unmanaged ${SUBNET_IFACE}
+    fi
+
+    echo "Successfully set to unmanaged"
+fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
     # dnsmasq config (dhcp + dns)
@@ -1585,21 +1629,19 @@ EOF
     fi
 fi
 
-# initialize WiFi interface
-if [[ $NO_VIRT -eq 0 && -n "$NEW_MACADDR" ]]; then
-    ip link set dev ${AP_IFACE} address ${NEW_MACADDR} || die "$VIRTDIEMSG"
+#===========================
+
+# initialize subnet interface
+if [[  -n "$NEW_MACADDR" ]]; then
+    ip link set dev ${SUBNET_IFACE} address ${NEW_MACADDR} || die "Failed setting new MAC address"
 fi
 
-ip link set down dev ${AP_IFACE} || die "$VIRTDIEMSG"
-ip addr flush ${AP_IFACE} || die "$VIRTDIEMSG"
-
-if [[ $NO_VIRT -eq 1 && -n "$NEW_MACADDR" ]]; then
-    ip link set dev ${AP_IFACE} address ${NEW_MACADDR} || die
-fi
+ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
+ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
 
-ip link set up dev ${AP_IFACE} || die "$VIRTDIEMSG"
-ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${AP_IFACE} || die "$VIRTDIEMSG"
+ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
+ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IP"
 
 
 # enable Internet sharing
@@ -1644,37 +1686,43 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     umask $SCRIPT_UMASK
 fi
 
+if [[ $WIFI_IFACE ]]; then
 
-# start access point
-echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
-
-if [[ $NO_HAVEGED -eq 0 ]]; then
-    haveged_watchdog &
-    HAVEGED_WATCHDOG_PID=$!
-fi
-
-# start hostapd (use stdbuf when available for no delayed output in programs that redirect stdout)
-STDBUF_PATH=`which stdbuf`
-if [ $? -eq 0 ]; then
-    STDBUF_PATH=$STDBUF_PATH" -oL"
-fi
-$STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS $CONFDIR/hostapd.conf &
-HOSTAPD_PID=$!
-echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
-
-if ! wait $HOSTAPD_PID; then
-    echo -e "\nError: Failed to run hostapd, maybe a program is interfering." >&2
-    if networkmanager_is_running; then
-        echo "If an error like 'n80211: Could not configure driver mode' was thrown" >&2
-        echo "try running the following before starting lnxrouter:" >&2
-        if [[ $NM_OLDER_VERSION -eq 1 ]]; then
-            echo "    nmcli nm wifi off" >&2
-        else
-            echo "    nmcli r wifi off" >&2
-        fi
-        echo "    rfkill unblock wlan" >&2
+    if [[ $NO_HAVEGED -eq 0 ]]; then
+        haveged_watchdog &
+        HAVEGED_WATCHDOG_PID=$!
     fi
-    die
+
+    # start access point
+    echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
+    # start hostapd (use stdbuf when available for no delayed output in programs that redirect stdout)
+    STDBUF_PATH=`which stdbuf`
+    if [ $? -eq 0 ]; then
+        STDBUF_PATH=$STDBUF_PATH" -oL"
+    fi
+    $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS $CONFDIR/hostapd.conf &
+    HOSTAPD_PID=$!
+    echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
+
+    if ! wait $HOSTAPD_PID; then
+        echo -e "\nError: Failed to run hostapd, maybe a program is interfering." >&2
+        if networkmanager_is_running; then
+            echo "If an error like 'n80211: Could not configure driver mode' was thrown" >&2
+            echo "try running the following before starting lnxrouter:" >&2
+            if [[ $NM_OLDER_VERSION -eq 1 ]]; then
+                echo "    nmcli nm wifi off" >&2
+            else
+                echo "    nmcli r wifi off" >&2
+            fi
+            echo "    rfkill unblock wlan" >&2
+        fi
+        die
+    fi
+else
+    # need loop to keep this script running
+    while :; do
+        sleep 9999
+    done
 fi
 
 clean_exit
