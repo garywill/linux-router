@@ -644,26 +644,29 @@ HAVEGED_WATCHDOG_PID=
 SHOW_DNS_QUERY=0
 
 start_nat() {
-    iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
+    echo Setting iptables rules to NAT 
+    iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE || die
     iptables -w -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-    iptables -w -v -I FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    iptables -w -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
 }
 stop_nat() {
-    iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
+    iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE
     iptables -w -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
-    iptables -w -D FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT
+    iptables -w -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
 }
 
 allow_dns_port() {
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 53 -j ACCEPT || die
+    echo Setting iptables rules to allow DNS port access
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
 }
 unallow_dns_port() {
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport 53 -j ACCEPT
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 53 -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
 }
 
 start_dhcp() {
+    echo Setting iptables rules to allow DHCP port access
     iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
 }
 stop_dhcp() {
