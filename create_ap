@@ -80,10 +80,7 @@ usage() {
     echo
     echo "Examples:"
     echo "  "$PROGNAME" wlan0 MyAccessPoint MyPassPhrase"
-    echo "  echo -e 'MyAccessPoint\nMyPassPhrase' | "$PROGNAME" wlan0"
     echo "  "$PROGNAME" wlan0 MyAccessPoint"
-    echo "  echo 'MyAccessPoint' | "$PROGNAME" wlan0"
-    echo "  "$PROGNAME" wlan0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" -n wlan0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" --driver rtl871xdrv wlan0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" --daemon wlan0 MyAccessPoint MyPassPhrase"
@@ -1202,73 +1199,13 @@ if [[ -n "$NEW_MACADDR" ]]; then
     fi
 fi
 
-if [[ "$SHARE_METHOD" != "none" ]]; then
-    MIN_REQUIRED_ARGS=1
-else
-    MIN_REQUIRED_ARGS=1
+if [[ $# -ne 2 && $# -ne 3 ]]; then
+    usage >&2
+    exit 1
 fi
 
-if [[ $# -gt $MIN_REQUIRED_ARGS ]]; then
-    if [[ "$SHARE_METHOD" != "none" ]]; then
-        if [[ $# -ne 3 && $# -ne 4 ]]; then
-            usage >&2
-            exit 1
-        fi
-        SSID="$2"
-        PASSPHRASE="$3"
-    else
-        if [[ $# -ne 2 && $# -ne 3 ]]; then
-            usage >&2
-            exit 1
-        fi
-        SSID="$2"
-        PASSPHRASE="$3"
-    fi
-else
-    if [[ "$SHARE_METHOD" != "none" ]]; then
-        if [[ $# -ne 2 ]]; then
-            usage >&2
-            exit 1
-        fi
-    fi
-    if tty -s; then
-        while :; do
-            read -p "SSID: " SSID
-            if [[ ${#SSID} -lt 1 || ${#SSID} -gt 32 ]]; then
-                echo "ERROR: Invalid SSID length ${#SSID} (expected 1..32)" >&2
-                continue
-            fi
-            break
-        done
-        while :; do
-            if [[ $USE_PSK -eq 0 ]]; then
-                read -p "Passphrase: " -s PASSPHRASE
-                echo
-                if [[ ${#PASSPHRASE} -gt 0 && ${#PASSPHRASE} -lt 8 ]] || [[ ${#PASSPHRASE} -gt 63 ]]; then
-                    echo "ERROR: Invalid passphrase length ${#PASSPHRASE} (expected 8..63)" >&2
-                    continue
-                fi
-                read -p "Retype passphrase: " -s PASSPHRASE2
-                echo
-                if [[ "$PASSPHRASE" != "$PASSPHRASE2" ]]; then
-                    echo "Passphrases do not match."
-                else
-                    break
-                fi
-            else
-                read -p "PSK: " PASSPHRASE
-                echo
-                if [[ ${#PASSPHRASE} -gt 0 && ${#PASSPHRASE} -ne 64 ]]; then
-                    echo "ERROR: Invalid pre-shared-key length ${#PASSPHRASE} (expected 64)" >&2
-                    continue
-                fi
-            fi
-        done
-    else
-        read SSID
-        read PASSPHRASE
-    fi
-fi
+SSID="$2"
+PASSPHRASE="$3"
 
 
 if [[ ${#SSID} -lt 1 || ${#SSID} -gt 32 ]]; then
