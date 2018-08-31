@@ -231,7 +231,7 @@ Options:
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
 ```
-
+> On exiting it restores changes done to system, except `/proc/sys/net/ipv4/ip_forward` and `/proc/sys/net/ipv6/conf/all/forwarding` set by NAT mode.
 
 ## Dependencies
 - bash
