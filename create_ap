@@ -65,8 +65,6 @@ usage() {
     echo "                          For an <id> you can put the PID of create_ap or the WiFi interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
-    echo
-    echo "Non-Bridging Options:"
     echo "  --no-dns                Disable dnsmasq DNS server"
     echo "  --no-dnsmasq            Disable dnsmasq server completely"
     echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
@@ -590,7 +588,7 @@ ADDN_HOSTS=
 DHCP_DNS=gateway
 NO_DNS=0
 NO_DNSMASQ=0
-DNS_PORT=
+DNS_PORT=5353
 HIDDEN=0
 MAC_FILTER=0
 MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
@@ -620,9 +618,12 @@ LIST_CLIENTS_ID=
 CONFDIR=
 WIFI_IFACE=
 VWIFI_IFACE=
+AP_IFACE=
 OLD_MACADDR=
 IP_ADDRS=
 ROUTE_ADDRS=
+
+SUBNET_IFACE=
 
 HAVEGED_WATCHDOG_PID=
 
@@ -672,35 +673,30 @@ _cleanup() {
 
     if [[ "$SHARE_METHOD" != "none" ]]; then
         if [[ "$SHARE_METHOD" == "nat" ]]; then
-            iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${WIFI_IFACE} -j MASQUERADE
-            iptables -w -D FORWARD -i ${WIFI_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
+            iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
+            iptables -w -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
             iptables -w -D FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT
         fi
     fi
 
     
     if [[ $NO_DNS -eq 0 ]]; then
-        iptables -w -D INPUT -i ${WIFI_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
-        iptables -w -D INPUT -i ${WIFI_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
+        iptables -w -D INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
+        iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
         iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
             -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
         iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
             -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
     fi
-    iptables -w -D INPUT -i ${WIFI_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
     
-
+    ip link set down dev ${AP_IFACE}
+    ip addr flush ${AP_IFACE}
     if [[ $NO_VIRT -eq 0 ]]; then
-        if [[ -n "$VWIFI_IFACE" ]]; then
-            ip link set down dev ${VWIFI_IFACE}
-            ip addr flush ${VWIFI_IFACE}
-            networkmanager_rm_unmanaged_if_needed ${VWIFI_IFACE} ${OLD_MACADDR}
-            iw dev ${VWIFI_IFACE} del
-            dealloc_iface $VWIFI_IFACE
-        fi
+        networkmanager_rm_unmanaged_if_needed ${VWIFI_IFACE} ${OLD_MACADDR}
+        iw dev ${VWIFI_IFACE} del
+        dealloc_iface $VWIFI_IFACE
     else
-        ip link set down dev ${WIFI_IFACE}
-        ip addr flush ${WIFI_IFACE}
         if [[ -n "$NEW_MACADDR" ]]; then
             ip link set dev ${WIFI_IFACE} address ${OLD_MACADDR}
         fi
@@ -1304,13 +1300,14 @@ if [[ $NO_VIRT -eq 0 ]]; then
     if [[ -z "$NEW_MACADDR" && $(get_all_macaddrs | grep -c ${OLD_MACADDR}) -ne 1 ]]; then
         NEW_MACADDR=$(get_new_macaddr ${VWIFI_IFACE})
     fi
-    WIFI_IFACE=${VWIFI_IFACE}
+    AP_IFACE=${VWIFI_IFACE}
 else
     OLD_MACADDR=$(get_macaddr ${WIFI_IFACE})
+    AP_IFACE=${WIFI_IFACE}
 fi
 
 mutex_lock
-echo $WIFI_IFACE > $CONFDIR/wifi_iface
+echo $AP_IFACE > $CONFDIR/wifi_iface
 chmod 444 $CONFDIR/wifi_iface
 mutex_unlock
 
@@ -1318,14 +1315,14 @@ if [[ -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
     iw reg set "$COUNTRY"
 fi
 
-can_transmit_to_channel ${WIFI_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
+can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
 
-if networkmanager_exists && ! networkmanager_iface_is_unmanaged ${WIFI_IFACE}; then
-    echo -n "Network Manager found, set ${WIFI_IFACE} as unmanaged device... "
-    networkmanager_add_unmanaged ${WIFI_IFACE}
+if networkmanager_exists && ! networkmanager_iface_is_unmanaged ${AP_IFACE}; then
+    echo -n "Network Manager found, set ${AP_IFACE} as unmanaged device... "
+    networkmanager_add_unmanaged ${AP_IFACE}
 
     if networkmanager_is_running; then
-        networkmanager_wait_until_unmanaged ${WIFI_IFACE}
+        networkmanager_wait_until_unmanaged ${AP_IFACE}
     fi
 
     echo "DONE"
@@ -1341,7 +1338,7 @@ fi
 cat << EOF > $CONFDIR/hostapd.conf
 beacon_int=100
 ssid=${SSID}
-interface=${WIFI_IFACE}
+interface=${AP_IFACE}
 driver=${DRIVER}
 channel=${CHANNEL}
 ctrl_interface=$CONFDIR/hostapd_ctrl
@@ -1434,27 +1431,27 @@ fi
 
 # initialize WiFi interface
 if [[ $NO_VIRT -eq 0 && -n "$NEW_MACADDR" ]]; then
-    ip link set dev ${WIFI_IFACE} address ${NEW_MACADDR} || die "$VIRTDIEMSG"
+    ip link set dev ${AP_IFACE} address ${NEW_MACADDR} || die "$VIRTDIEMSG"
 fi
 
-ip link set down dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
-ip addr flush ${WIFI_IFACE} || die "$VIRTDIEMSG"
+ip link set down dev ${AP_IFACE} || die "$VIRTDIEMSG"
+ip addr flush ${AP_IFACE} || die "$VIRTDIEMSG"
 
 if [[ $NO_VIRT -eq 1 && -n "$NEW_MACADDR" ]]; then
-    ip link set dev ${WIFI_IFACE} address ${NEW_MACADDR} || die
+    ip link set dev ${AP_IFACE} address ${NEW_MACADDR} || die
 fi
 
 
-ip link set up dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
-ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
+ip link set up dev ${AP_IFACE} || die "$VIRTDIEMSG"
+ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${AP_IFACE} || die "$VIRTDIEMSG"
 
-
+SUBNET_IFACE=${AP_IFACE}
 # enable Internet sharing
 if [[ "$SHARE_METHOD" != "none" ]]; then
     echo "Sharing Internet using method: $SHARE_METHOD"
     if [[ "$SHARE_METHOD" == "nat" ]]; then
-        iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${WIFI_IFACE} -j MASQUERADE || die
-        iptables -w -v -I FORWARD -i ${WIFI_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
+        iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
+        iptables -w -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
         iptables -w -v -I FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
         echo 1 > /proc/sys/net/ipv4/ip_forward || die
         # to enable clients to establish PPTP connections we must
@@ -1468,19 +1465,16 @@ fi
 # start dhcp + dns (optional)
 
 if [[ $NO_DNS -eq 0 ]]; then
-    DNS_PORT=5353
-    iptables -w -v -I INPUT -i ${WIFI_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
-    iptables -w -v -I INPUT -i ${WIFI_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
     iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
         -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
     iptables -w -v -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
         -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
-else
-    DNS_PORT=0
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
-    iptables -w -v -I INPUT -i ${WIFI_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
 
     if which complain > /dev/null 2>&1; then
         # openSUSE's apparmor does not allow dnsmasq to read files.
