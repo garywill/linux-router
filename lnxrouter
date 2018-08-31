@@ -616,15 +616,15 @@ get_macaddr() {
 
 
 alloc_new_iface() {
-    local prefix=$1
     local i=0
-
+    local v_iface_name=
     mutex_lock
     while :; do
-        if ! is_interface $prefix$i && [[ ! -f $COMMON_CONFDIR/ifaces/$prefix$i ]]; then
+        v_iface_name="x$i${WIFI_IFACE}"
+        if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/ifaces/${v_iface_name} ]]; then
             mkdir -p $COMMON_CONFDIR/ifaces
-            touch $COMMON_CONFDIR/ifaces/$prefix$i
-            echo $prefix$i
+            touch $COMMON_CONFDIR/ifaces/${v_iface_name}
+            echo ${v_iface_name}
             mutex_unlock
             return
         fi
@@ -835,7 +835,9 @@ networkmanager_wait_until_unmanaged() {
         RES=$?
         [[ $RES -eq 0 ]] && break
         [[ $RES -eq 2 ]] && die "Interface '${1}' does not exist.
-       It's probably renamed by a udev rule."
+       It's probably renamed by a udev rule.
+       use   iwconfig   to see devices.
+       use   iw dev <dev name> del   to delete uneeded device"
         sleep 1
     done
     sleep 2
@@ -1304,7 +1306,7 @@ if [[ $USE_IWCONFIG -eq 0 ]]; then
 fi
 
 if [[ $NO_VIRT -eq 0 ]]; then
-    VWIFI_IFACE=$(alloc_new_iface ap)
+    VWIFI_IFACE=$(alloc_new_iface)
 
     # in NetworkManager 0.9.9 and above we can set the interface as unmanaged without
     # the need of MAC address, so we set it before we create the virtual interface.
