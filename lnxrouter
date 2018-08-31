@@ -32,12 +32,17 @@ usage() {
     echo "  --version               Print version number"
     
 
+    
+    #echo "  -m <method>             Method for Internet sharing."
+    #echo "                          Use: 'nat' for NAT (default)"
+    #echo "                               'redsocks' for transparent proxy. Usually use with --dns-proxy"
+    #echo "                               'none' for no Internet sharing (equivalent to -n)"
     echo "  -n                      Disable Internet sharing"
-    echo "  -m <method>             Method for Internet sharing."
-    echo "                          Use: 'nat' for NAT (default)"
-    echo "                               'none' for no Internet sharing (equivalent to -n)"
+    echo "  --tp <port>              Transparent proxy, redirect tcp and udp traffic to port."
+    echo "                          Usually use with --dns-proxy"
     
     echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
+    echo "  --dns-proxy <port>      Redirect 53 port to DNS proxy port. dnsmasq DNS is disabled"
     echo "  --no-dnsmasq-dns        dnsmasq DNS disabled"
     echo "  --no-dnsmasq            Disable dnsmasq server completely (dhcp and dns)"
     echo "  --log-dns               Show dnsmasq DNS server query log"
@@ -97,6 +102,7 @@ usage() {
     echo "  "$PROGNAME" --driver rtl871xdrv --ap wlan0 MyAccessPoint --password MyPassPhrase"
     echo "  "$PROGNAME" --daemon --ap wlan0 MyAccessPoint --password MyPassPhrase"
     echo "  "$PROGNAME" --stop wlan0"
+    echo "  "$PROGNAME" --ap wlan0 MyAccessPoint --password MyPassPhrase --tp <transparent-proxy> --dns-proxy <dns-proxy>"
 }
 
 if [[ "$1" == "" ]]; then
@@ -116,6 +122,8 @@ SUBNET_IFACE=
 
 ISOLATE_CLIENTS=0
 SHARE_METHOD=nat
+TP_PORT=
+TP_DNS_PORT=
 
 NEW_MACADDR=
 OLD_MACADDR=
@@ -164,9 +172,9 @@ while [[ -n "$1" ]]; do
             shift
             SHARE_METHOD=none
             ;;
-        -m)
+        --tp)
             shift
-            SHARE_METHOD="$1"
+            TP_PORT="$1"
             shift
             ;;
             
@@ -182,6 +190,11 @@ while [[ -n "$1" ]]; do
             shift
             ;;
             
+        --dns-proxy)
+            shift
+            TP_DNS_PORT="$1"
+            shift
+            ;;
         --no-dnsmasq-dns)
             shift
             dnsmasq_NO_DNS=1
@@ -877,6 +890,50 @@ stop_dhcp() {
     iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
 }
 
+redirect_dns() {
+    echo "Redirect port 53 to ${TP_DNS_PORT}"
+    # allow input to  dns proxy port
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT || die
+    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT || die
+    # redirect 53 to dns proxy
+    iptables -w -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
+    iptables -w -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
+}
+unredirect_dns() {
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
+
+    iptables -w -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+    iptables -w -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+}
+
+start_redsocks() {
+    echo "Redirect all TCP and UDP traffic to transparent proxy port ${TP_PORT}"
+    iptables -w -t nat -N REDSOCKS-${SUBNET_IFACE} || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
+    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
+    iptables -v -w -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+    iptables -v -w -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+
+    iptables -v -w -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j REDSOCKS-${SUBNET_IFACE} || die
+
+    iptables -v -w -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+    iptables -v -w -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+}
+stop_redsocks() {
+    iptables -w -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
+    iptables -w -t nat -F REDSOCKS-${SUBNET_IFACE}
+    iptables -w -t nat -X REDSOCKS-${SUBNET_IFACE}
+    
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
+    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
+}
+
 _cleanup() {
     local PID x
 
@@ -939,15 +996,21 @@ _cleanup() {
 }
 
 clean_iptables() {
-    if [[ "$SHARE_METHOD" != "none" ]]; then
-        if [[ "$SHARE_METHOD" == "nat" ]]; then
-            stop_nat
-        fi
+
+    if [[ "$SHARE_METHOD" == "nat" ]]; then
+        stop_nat
+    elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
+        stop_redsocks
     fi
+
 
     
     if [[ "$DHCP_DNS" == "gateway" ]]; then
         unallow_dns_port
+    fi
+    
+    if [[ "$TP_DNS_PORT" ]]; then
+        unredirect_dns
     fi
     
     if [[ $NO_DNSMASQ -eq 0 ]]; then
@@ -1135,6 +1198,13 @@ trap "clean_exit" SIGINT SIGUSR1
 # if we get USR2 signal then run die().
 trap "die" SIGUSR2
 
+if [[ $TP_PORT ]]; then
+    SHARE_METHOD=redsocks
+fi
+
+if [[ $TP_DNS_PORT ]]; then
+    dnsmasq_NO_DNS=1
+fi
 
 if [[ $LIST_RUNNING -eq 1 ]]; then
     echo -e "List of running $PROGNAME instances:\n"
@@ -1229,12 +1299,6 @@ if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^(8192[cd][ue]|8723a[sue])$ 
     fi
 fi
 
-if [[ "$SHARE_METHOD" != "nat"  && "$SHARE_METHOD" != "none" ]]; then
-    echo "ERROR: Wrong Internet sharing method" >&2
-    echo
-    usage >&2
-    exit 1
-fi
 
 if [[ -n "$NEW_MACADDR" ]]; then
     if ! is_macaddr "$NEW_MACADDR"; then
@@ -1521,23 +1585,31 @@ ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${AP_IFACE} || die "$V
 
 
 # enable Internet sharing
-if [[ "$SHARE_METHOD" != "none" ]]; then
-    echo "Sharing Internet using method: $SHARE_METHOD"
-    if [[ "$SHARE_METHOD" == "nat" ]]; then
-        start_nat
-        echo 1 > /proc/sys/net/ipv4/ip_forward || die
-        # to enable clients to establish PPTP connections we must
-        # load nf_nat_pptp module
-        modprobe nf_nat_pptp > /dev/null 2>&1
-    fi
-else
+if [[ "$SHARE_METHOD" == "none" ]]; then
     echo "No Internet sharing"
+elif [[ "$SHARE_METHOD" == "nat" ]]; then
+    start_nat
+    echo 1 > /proc/sys/net/ipv4/ip_forward || die
+    # to enable clients to establish PPTP connections we must
+    # load nf_nat_pptp module
+    modprobe nf_nat_pptp > /dev/null 2>&1
+elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
+    if [[ "$dnsmasq_NO_DNS" -eq 0 ]]; then
+        echo 
+        echo "Warning: You are using transparent proxy but gateway is providing local DNS, this may cause privacy leak !!!"
+        echo 
+    fi
+    start_redsocks
 fi
 
 # start dhcp + dns (optional)
 
 if [[ "$DHCP_DNS" == "gateway" ]]; then
     allow_dns_port
+fi
+
+if [[ "$TP_DNS_PORT" ]]; then
+    redirect_dns
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
