@@ -1084,16 +1084,13 @@ while [[ -n "$1" ]]; do
         --ap)
             shift
             WIFI_IFACE="$1"
-            echo wifi_iface is $WIFI_IFACE
             shift
             SSID="$1"
-            echo ssid is $SSID
             shift
             ;;
         --password)
             shift
             PASSPHRASE="$1"
-            echo password is $PASSPHRASE
             shift
             ;;
         --)
