@@ -1714,14 +1714,14 @@ if [[ $WIFI_IFACE ]]; then
     fi
     echo 
     echo "Starting hostapd"
-    $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -B $CONFDIR/hostapd.conf -P $CONFDIR/hostapd.pid || die &
+    # $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS -B -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf || die &
+    $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS $CONFDIR/hostapd.conf &
+    HOSTAPD_PID=$!
+    echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
+
     while [[ ! -f $CONFDIR/hostapd.pid ]]; do
         sleep 1
     done
-    
-    #HOSTAPD_PID=$!
-    #echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
-    
     echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
 
 
