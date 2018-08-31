@@ -25,7 +25,7 @@ SCRIPT_UMASK=0077
 umask $SCRIPT_UMASK
 
 usage() {
-    echo "Usage: "$PROGNAME" [options] <wifi-interface> [<access-point-name> [<passphrase>]]"
+    echo "Usage: "$PROGNAME" [options] <wifi-interface> <access-point-name> [<passphrase>]"
     echo
     echo "Options:"
     echo "  -h, --help              Show this help"
@@ -76,7 +76,6 @@ usage() {
     echo "Useful informations:"
     echo "  * If you're not using the --no-virt option, then you can create an AP with the same"
     echo "    interface you are getting your Internet connection."
-    echo "  * You can pass your SSID and password through pipe or through arguments (see examples)."
     echo
     echo "Examples:"
     echo "  "$PROGNAME" wlan0 MyAccessPoint MyPassPhrase"
@@ -1404,6 +1403,8 @@ wpa_key_mgmt=WPA-PSK
 wpa_pairwise=TKIP CCMP
 rsn_pairwise=CCMP
 EOF
+else
+    echo "Warning: Wifi is not protected by password" >&2
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
