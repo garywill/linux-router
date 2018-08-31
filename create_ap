@@ -38,7 +38,6 @@ usage() {
     echo "                          the <interface-with-internet> argument)"
     echo "  -m <method>             Method for Internet sharing."
     echo "                          Use: 'nat' for NAT (default)"
-    echo "                               'bridge' for bridging"
     echo "                               'none' for no Internet sharing (equivalent to -n)"
     echo "  --psk                   Use 64 hex digits pre-shared-key instead of passphrase"
     echo "  --hidden                Make the Access Point hidden (do not broadcast the SSID)"
@@ -84,8 +83,6 @@ usage() {
     echo "  * If you're not using the --no-virt option, then you can create an AP with the same"
     echo "    interface you are getting your Internet connection."
     echo "  * You can pass your SSID and password through pipe or through arguments (see examples)."
-    echo "  * On bridge method if the <interface-with-internet> is not a bridge interface, then"
-    echo "    a bridge interface is created automatically."
     echo
     echo "Examples:"
     echo "  "$PROGNAME" wlan0 eth0 MyAccessPoint MyPassPhrase"
@@ -94,8 +91,6 @@ usage() {
     echo "  echo 'MyAccessPoint' | "$PROGNAME" wlan0 eth0"
     echo "  "$PROGNAME" wlan0 wlan0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" -n wlan0 MyAccessPoint MyPassPhrase"
-    echo "  "$PROGNAME" -m bridge wlan0 eth0 MyAccessPoint MyPassPhrase"
-    echo "  "$PROGNAME" -m bridge wlan0 br0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" --driver rtl871xdrv wlan0 eth0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" --daemon wlan0 eth0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" --stop wlan0"
@@ -241,10 +236,7 @@ is_wifi_interface() {
     return 1
 }
 
-is_bridge_interface() {
-    [[ -z "$1" ]] && return 1
-    [[ -d "/sys/class/net/${1}/bridge" ]]
-}
+
 
 get_phy_device() {
     local x
@@ -651,7 +643,6 @@ CONFDIR=
 WIFI_IFACE=
 VWIFI_IFACE=
 INTERNET_IFACE=
-BRIDGE_IFACE=
 OLD_MACADDR=
 IP_ADDRS=
 ROUTE_ADDRS=
@@ -720,56 +711,20 @@ _cleanup() {
             iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${WIFI_IFACE} -j MASQUERADE
             iptables -w -D FORWARD -i ${WIFI_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
             iptables -w -D FORWARD -i ${INTERNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
-        elif [[ "$SHARE_METHOD" == "bridge" ]]; then
-            if ! is_bridge_interface $INTERNET_IFACE; then
-                ip link set dev $BRIDGE_IFACE down
-                ip link set dev $INTERNET_IFACE down
-                ip link set dev $INTERNET_IFACE promisc off
-                ip link set dev $INTERNET_IFACE nomaster
-                ip link delete $BRIDGE_IFACE type bridge
-                ip addr flush $INTERNET_IFACE
-                ip link set dev $INTERNET_IFACE up
-                dealloc_iface $BRIDGE_IFACE
-
-                for x in "${IP_ADDRS[@]}"; do
-                    x="${x/inet/}"
-                    x="${x/secondary/}"
-                    x="${x/dynamic/}"
-                    x=$(echo $x | sed 's/\([0-9]\)sec/\1/g')
-                    x="${x/${INTERNET_IFACE}/}"
-                    ip addr add $x dev $INTERNET_IFACE
-                done
-
-                ip route flush dev $INTERNET_IFACE
-
-                for x in "${ROUTE_ADDRS[@]}"; do
-                    [[ -z "$x" ]] && continue
-                    [[ "$x" == default* ]] && continue
-                    ip route add $x dev $INTERNET_IFACE
-                done
-
-                for x in "${ROUTE_ADDRS[@]}"; do
-                    [[ -z "$x" ]] && continue
-                    [[ "$x" != default* ]] && continue
-                    ip route add $x dev $INTERNET_IFACE
-                done
-
-                networkmanager_rm_unmanaged_if_needed $INTERNET_IFACE
-            fi
-        fi
+       
     fi
 
-    if [[ "$SHARE_METHOD" != "bridge" ]]; then
-        if [[ $NO_DNS -eq 0 ]]; then
-            iptables -w -D INPUT -i ${WIFI_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
-            iptables -w -D INPUT -i ${WIFI_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
-            iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-                -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-            iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-                -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
-        fi
-        iptables -w -D INPUT -i ${WIFI_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    
+    if [[ $NO_DNS -eq 0 ]]; then
+        iptables -w -D INPUT -i ${WIFI_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT
+        iptables -w -D INPUT -i ${WIFI_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT
+        iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+            -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT
+        iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+            -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
     fi
+    iptables -w -D INPUT -i ${WIFI_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    
 
     if [[ $NO_VIRT -eq 0 ]]; then
         if [[ -n "$VWIFI_IFACE" ]]; then
@@ -1350,7 +1305,7 @@ if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^(8192[cd][ue]|8723a[sue])$ 
     fi
 fi
 
-if [[ "$SHARE_METHOD" != "nat" && "$SHARE_METHOD" != "bridge" && "$SHARE_METHOD" != "none" ]]; then
+if [[ "$SHARE_METHOD" != "nat"  && "$SHARE_METHOD" != "none" ]]; then
     echo "ERROR: Wrong Internet sharing method" >&2
     echo
     usage >&2
@@ -1503,13 +1458,7 @@ if [[ -e /proc/sys/net/bridge/bridge-nf-call-iptables ]]; then
 fi
 mutex_unlock
 
-if [[ "$SHARE_METHOD" == "bridge" ]]; then
-    if is_bridge_interface $INTERNET_IFACE; then
-        BRIDGE_IFACE=$INTERNET_IFACE
-    else
-        BRIDGE_IFACE=$(alloc_new_iface br)
-    fi
-fi
+
 
 if [[ $USE_IWCONFIG -eq 0 ]]; then
     iw dev ${WIFI_IFACE} set power_save off
@@ -1662,9 +1611,7 @@ rsn_pairwise=CCMP
 EOF
 fi
 
-if [[ "$SHARE_METHOD" == "bridge" ]]; then
-    echo "bridge=${BRIDGE_IFACE}" >> $CONFDIR/hostapd.conf
-elif [[ $NO_DNSMASQ -eq 0 ]]; then
+if [[ $NO_DNSMASQ -eq 0 ]]; then
     # dnsmasq config (dhcp + dns)
     DNSMASQ_VER=$(dnsmasq -v | grep -m1 -oE '[0-9]+(\.[0-9]+)*\.[0-9]+')
     version_cmp $DNSMASQ_VER 2.63
@@ -1706,10 +1653,10 @@ if [[ $NO_VIRT -eq 1 && -n "$NEW_MACADDR" ]]; then
     ip link set dev ${WIFI_IFACE} address ${NEW_MACADDR} || die
 fi
 
-if [[ "$SHARE_METHOD" != "bridge" ]]; then
-    ip link set up dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
-    ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
-fi
+
+ip link set up dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
+ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${WIFI_IFACE} || die "$VIRTDIEMSG"
+
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" != "none" ]]; then
@@ -1723,108 +1670,39 @@ if [[ "$SHARE_METHOD" != "none" ]]; then
         # to enable clients to establish PPTP connections we must
         # load nf_nat_pptp module
         modprobe nf_nat_pptp > /dev/null 2>&1
-    elif [[ "$SHARE_METHOD" == "bridge" ]]; then
-        # disable iptables rules for bridged interfaces
-        if [[ -e /proc/sys/net/bridge/bridge-nf-call-iptables ]]; then
-            echo 0 > /proc/sys/net/bridge/bridge-nf-call-iptables
-        fi
-
-        # to initialize the bridge interface correctly we need to do the following:
-        #
-        # 1) save the IPs and route table of INTERNET_IFACE
-        # 2) if NetworkManager is running set INTERNET_IFACE as unmanaged
-        # 3) create BRIDGE_IFACE and attach INTERNET_IFACE to it
-        # 4) set the previously saved IPs and route table to BRIDGE_IFACE
-        #
-        # we need the above because BRIDGE_IFACE is the master interface from now on
-        # and it must know where is connected, otherwise connection is lost.
-        if ! is_bridge_interface $INTERNET_IFACE; then
-            echo -n "Create a bridge interface... "
-            OLD_IFS="$IFS"
-            IFS=$'\n'
-
-            IP_ADDRS=( $(ip addr show $INTERNET_IFACE | grep -A 1 -E 'inet[[:blank:]]' | paste - -) )
-            ROUTE_ADDRS=( $(ip route show dev $INTERNET_IFACE) )
-
-            IFS="$OLD_IFS"
-
-            if networkmanager_is_running; then
-                networkmanager_add_unmanaged $INTERNET_IFACE
-                networkmanager_wait_until_unmanaged $INTERNET_IFACE
-            fi
-
-            # create bridge interface
-            ip link add name $BRIDGE_IFACE type bridge || die
-            ip link set dev $BRIDGE_IFACE up || die
-            # set 0ms forward delay
-            echo 0 > /sys/class/net/$BRIDGE_IFACE/bridge/forward_delay
-
-            # attach internet interface to bridge interface
-            ip link set dev $INTERNET_IFACE promisc on || die
-            ip link set dev $INTERNET_IFACE up || die
-            ip link set dev $INTERNET_IFACE master $BRIDGE_IFACE || die
-
-            ip addr flush $INTERNET_IFACE
-            for x in "${IP_ADDRS[@]}"; do
-                x="${x/inet/}"
-                x="${x/secondary/}"
-                x="${x/dynamic/}"
-                x=$(echo $x | sed 's/\([0-9]\)sec/\1/g')
-                x="${x/${INTERNET_IFACE}/}"
-                ip addr add $x dev $BRIDGE_IFACE || die
-            done
-
-            # remove any existing entries that were added from 'ip addr add'
-            ip route flush dev $INTERNET_IFACE
-            ip route flush dev $BRIDGE_IFACE
-
-            # we must first add the entries that specify the subnets and then the
-            # gateway entry, otherwise 'ip addr add' will return an error
-            for x in "${ROUTE_ADDRS[@]}"; do
-                [[ "$x" == default* ]] && continue
-                ip route add $x dev $BRIDGE_IFACE || die
-            done
-
-            for x in "${ROUTE_ADDRS[@]}"; do
-                [[ "$x" != default* ]] && continue
-                ip route add $x dev $BRIDGE_IFACE || die
-            done
-
-            echo "$BRIDGE_IFACE created."
-        fi
-    fi
+    
 else
     echo "No Internet sharing"
 fi
 
 # start dhcp + dns (optional)
-if [[ "$SHARE_METHOD" != "bridge" ]]; then
-    if [[ $NO_DNS -eq 0 ]]; then
-        DNS_PORT=5353
-        iptables -w -I INPUT -i ${WIFI_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
-        iptables -w -I INPUT -i ${WIFI_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
-        iptables -w -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-            -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
-        iptables -w -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
-            -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
-    else
-        DNS_PORT=0
-    fi
 
-    if [[ $NO_DNSMASQ -eq 0 ]]; then
-      iptables -w -I INPUT -i ${WIFI_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
-
-      if which complain > /dev/null 2>&1; then
-          # openSUSE's apparmor does not allow dnsmasq to read files.
-          # remove restriction.
-          complain dnsmasq
-      fi
-
-      umask 0033
-      dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases -p $DNS_PORT || die & 
-      umask $SCRIPT_UMASK
-    fi
+if [[ $NO_DNS -eq 0 ]]; then
+    DNS_PORT=5353
+    iptables -w -I INPUT -i ${WIFI_IFACE} -p tcp -m tcp --dport $DNS_PORT -j ACCEPT || die
+    iptables -w -I INPUT -i ${WIFI_IFACE} -p udp -m udp --dport $DNS_PORT -j ACCEPT || die
+    iptables -w -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+        -p tcp -m tcp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
+    iptables -w -t nat -I PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
+        -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT || die
+else
+    DNS_PORT=0
 fi
+
+if [[ $NO_DNSMASQ -eq 0 ]]; then
+    iptables -w -I INPUT -i ${WIFI_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+
+    if which complain > /dev/null 2>&1; then
+        # openSUSE's apparmor does not allow dnsmasq to read files.
+        # remove restriction.
+        complain dnsmasq
+    fi
+
+    umask 0033
+    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases -p $DNS_PORT || die & 
+    umask $SCRIPT_UMASK
+fi
+
 
 # start access point
 echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
