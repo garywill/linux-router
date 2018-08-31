@@ -43,6 +43,8 @@ Options:
                             Set IPv6 DNS offered by DHCP (RA) 
                             (default: this host)
                             (Note IPv6 addresses need '[]' around)
+    --hostname <name>       DNS server associate this name with this host.
+                            Use '-' to read name from /etc/hostname
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
@@ -120,6 +122,7 @@ ETC_HOSTS=0
 ADDN_HOSTS=
 SUBNET_IFACE=
 CONN_IFACE=
+THISHOSTNAME=
 
 SHARE_METHOD=nat
 TP_PORT=
@@ -229,6 +232,11 @@ while [[ -n "$1" ]]; do
         --log-dns)
             shift
             SHOW_DNS_QUERY=1
+            ;;
+        --hostname)
+            shift
+            THISHOSTNAME="$1"
+            shift
             ;;
         -d)
             shift
@@ -715,11 +723,13 @@ start_redsocks() {
     iptables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 100.64.0.0/10  -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
     iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 255.255.255.255 -j RETURN || die
     
     iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
     iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
@@ -736,7 +746,6 @@ start_redsocks() {
         ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d ff00::/8 -j RETURN || die
         ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d ::1 -j RETURN || die
         ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d :: -j RETURN || die
-        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0100::/64 -j RETURN || die
 
         ip6tables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
         ip6tables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
@@ -1391,6 +1400,10 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     [[ -n "$MTU" ]] && echo "dhcp-option-force=option:mtu,${MTU}" >> $CONFDIR/dnsmasq.conf
     [[ $ETC_HOSTS -eq 0 ]] && echo no-hosts >> $CONFDIR/dnsmasq.conf
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
+    if [[ "$THISHOSTNAME" ]]; then
+        [[ "$THISHOSTNAME" == "-" ]] && THISHOSTNAME="$(cat /etc/hostname)"
+        echo "interface-name=$THISHOSTNAME,$SUBNET_IFACE" >> $CONFDIR/dnsmasq.conf
+    fi
     if [[ ! "$SHOW_DNS_QUERY" -eq 0 ]]; then
         echo log-queries=extra >> $CONFDIR/dnsmasq.conf
     fi
@@ -1502,11 +1515,8 @@ elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
     if [[ $IPV6 -eq 1 ]]; then
         echo 1 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding || die "Failed enabling $SUBNET_IFACE ipv6 forwarding"
     fi
-    if [[ "$dnsmasq_NO_DNS" -eq 0 ]]; then
-        echo 
-        echo "WARN: You are using transparent proxy but gateway is providing local DNS, this may cause privacy leak !!!" >&2
-        echo 
-    fi
+    [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using transparent proxy but this host is providing local DNS, this may cause privacy leak !!!\n" >&2
+
     start_redsocks
 fi
 
@@ -1543,7 +1553,8 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
 
 fi
 
-
+echo 
+echo "== Setting up completed, now linux-router is working =="
 # need loop to keep this script running
 bash -c "while :; do sleep 8000 ; done " &
 KEEP_RUNNING_PID=$!

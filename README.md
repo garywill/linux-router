@@ -74,8 +74,8 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ### LAN without Internet
 
 ```
-# lnxrouter -i eth1 -n
-# lnxrouter --ap wlan0 MyAccessPoint --password MyPassPhrase -n
+# lnxrouter -n -i eth1
+# lnxrouter -n --ap wlan0 MyAccessPoint --password MyPassPhrase
 ```
 
 ### Transparent proxy with Tor
@@ -189,6 +189,8 @@ Options:
                             Set IPv6 DNS offered by DHCP (RA) 
                             (default: this host)
                             (Note IPv6 addresses need '[]' around)
+    --hostname <name>       DNS server associate this name with this host.
+                            Use '-' to read name from /etc/hostname
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
