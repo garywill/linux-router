@@ -89,25 +89,57 @@ In `torrc`
 TransPort 0.0.0.0:9040 
 DNSPort 0.0.0.0:9053
 ```
-### Use with LXC
+### Use for LXC
 Create a bridge
 ```
-# brctl addbr lxcbr1
+# brctl addbr lxcbr5
 ```
 In LXC container `config`
 ```
 lxc.network.type = veth
 lxc.network.flags = up
-lxc.network.link = lxcbr1
+lxc.network.link = lxcbr5
 lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 ```
 ```
-# lnxrouter -i lxcbr1
+# lnxrouter -i lxcbr5
 ```
-### Use with VirtualBox
-On VirtualBox's global settings, create a host-only network `vboxnet1` with DHCP disabled.
+
+### Use as transparent proxy for LXD
+Create a bridge
 ```
-# lnxrouter -i vboxnet1
+# brctl addbr lxdbr5
+```
+Create and add LXD profile
+```
+$ lxc profile create profile5
+$ lxc profile edit profile5
+
+### profile content ###
+config: {}
+description: ""
+devices:
+  eth0:
+    name: eth0
+    nictype: bridged
+    parent: lxdbr5
+    type: nic
+name: profile5
+
+$ lxc profile add <container> profile5
+```
+That should make one container have 2 profiles. `profile5` will override `eth0`.
+```
+# lnxrouter -i lxdbr5 --tp 9040 --dns-proxy 9053
+```
+To remove that new profile from container
+```
+$ lxc profile remove <container> profile5
+```
+### Use as transparent proxy for VirtualBox
+On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
+```
+# lnxrouter -i vboxnet5 --tp 9040 --dns-proxy 9053
 ```
 ### CLI usage and other features
 

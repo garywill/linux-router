@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.5.1
+VERSION=0.5.2
 PROGNAME="$(basename $0)"
 
 export LC_ALL=C
@@ -944,13 +944,13 @@ if [[ $SHARE_METHOD == 'none' ]]; then
 fi
 
 if [[ -d /dev/shm ]]; then
-    TMPDIR=/dev/shm
+    TMPD=/dev/shm
 elif [[ -d /run/shm ]]; then
-    TMPDIR=/run/shm
+    TMPD=/run/shm
 else
-    TMPDIR=/tmp
+    TMPD=/tmp
 fi
-TMPDIR=$TMPDIR/lnxrouter_tmp
+TMPDIR=$TMPD/lnxrouter_tmp
 
 #======
 
@@ -1251,7 +1251,7 @@ wpa_pairwise=TKIP CCMP
 rsn_pairwise=CCMP
 EOF
     else
-        echo "Warning: Wifi is not protected by password" >&2
+        echo "WARN: Wifi is not protected by password" >&2
     fi
 chmod 600 $CONFDIR/hostapd.conf
 fi
@@ -1331,7 +1331,7 @@ elif [[ "$SHARE_METHOD" == "nat" ]]; then
 elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
     if [[ "$dnsmasq_NO_DNS" -eq 0 ]]; then
         echo 
-        echo "Warning: You are using transparent proxy but gateway is providing local DNS, this may cause privacy leak !!!"
+        echo "WARN: You are using transparent proxy but gateway is providing local DNS, this may cause privacy leak !!!" >&2
         echo 
     fi
     start_redsocks
@@ -1409,7 +1409,7 @@ fi
 
 sleep 2
 # need loop to keep this script running
-bash -c "while :; do sleep 3 ; done " &
+bash -c "while :; do sleep 800 ; done " &
 KEEP_RUNNING_PID=$!
 echo $KEEP_RUNNING_PID > $CONFDIR/keep_running.pid
 wait $KEEP_RUNNING_PID
