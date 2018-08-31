@@ -1499,7 +1499,7 @@ EOF
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
     if [[ ! "$SHOW_DNS_QUERY" -eq 0 ]]; then
         echo log-queries=extra >> $CONFDIR/dnsmasq.conf
-        echo log-facility=/dev/stdout >> $CONFDIR/dnsmasq.conf
+        echo log-facility=/dev/null >> $CONFDIR/dnsmasq.conf
     fi
 fi
 
