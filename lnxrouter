@@ -5,9 +5,7 @@ PROGNAME="$(basename $0)"
 
 export LC_ALL=C
 
-# all new files and directories must be readable only by root.
-# in special cases we must use chmod to give any other permissions.
-SCRIPT_UMASK=0077
+SCRIPT_UMASK=0122
 umask $SCRIPT_UMASK
 
 usage() {
@@ -132,7 +130,6 @@ NO_VIRT=0
 COUNTRY=
 FREQ_BAND=2.4
 NO_HAVEGED=0
-HAVEGED_WATCHDOG_PID=
 HOSTAPD_DEBUG_ARGS=
 USE_PSK=0
 FIX_UNMANAGED=0
@@ -351,19 +348,6 @@ while [[ -n "$1" ]]; do
 done
 
 
-# on success it echos a non-zero unused FD
-# on error it echos 0
-get_avail_fd() {
-    local x
-    for x in $(seq 1 $(ulimit -n)); do
-        if [[ ! -a "/proc/$BASHPID/fd/$x" ]]; then
-            echo $x
-            return
-        fi
-    done
-    echo 0
-}
-
 if [[ -d /dev/shm ]]; then
     TMPDIR=/dev/shm
 elif [[ -d /run/shm ]]; then
@@ -371,97 +355,11 @@ elif [[ -d /run/shm ]]; then
 else
     TMPDIR=/tmp
 fi
-mkdir -p $TMPDIR/lnxrouter_tmpfiles
-TMPDIR=$TMPDIR/lnxrouter_tmpfiles
-chmod 777 $TMPDIR 2>/dev/null
+mkdir -p $TMPDIR/lnxrouter_tmp
+TMPDIR=$TMPDIR/lnxrouter_tmp
+chmod 755 $TMPDIR 2>/dev/null
 
-# lock file for the mutex counter
-COUNTER_LOCK_FILE=$TMPDIR/lnxrouter.$$.lock
 
-cleanup_lock() {
-    rm -f $COUNTER_LOCK_FILE
-}
-
-LOCK_FILE=$TMPDIR/lnxrouter.all.lock
-init_lock() {
-
-    # we initialize only once
-    [[ $LOCK_FD -ne 0 ]] && return 0
-
-    LOCK_FD=$(get_avail_fd)
-    [[ $LOCK_FD -eq 0 ]] && return 1
-
-    # open/create lock file with write access for all users
-    # otherwise normal users will not be able to use it.
-    # to avoid race conditions on creation, we need to
-    # use umask to set the permissions.
-    umask 0555
-    eval "exec $LOCK_FD>$LOCK_FILE" > /dev/null 2>&1 || return 1
-    umask $SCRIPT_UMASK
-
-    # there is a case where lock file was created from a normal
-    # user. change the owner to root as soon as we can.
-    [[ $(id -u) -eq 0 ]] && chown 0:0 $LOCK_FILE
-
-    # create mutex counter lock file
-    echo 0 > $COUNTER_LOCK_FILE
-
-    return $?
-}
-
-# recursive mutex lock for all lnxrouter processes
-mutex_lock() {
-    local counter_mutex_fd
-    local counter
-
-    # lock local mutex and read counter
-    counter_mutex_fd=$(get_avail_fd)
-    if [[ $counter_mutex_fd -ne 0 ]]; then
-        eval "exec $counter_mutex_fd<>$COUNTER_LOCK_FILE"
-        flock $counter_mutex_fd
-        read -u $counter_mutex_fd counter
-    else
-        echo "Failed to lock mutex counter" >&2
-        return 1
-    fi
-
-    # lock global mutex and increase counter
-    [[ $counter -eq 0 ]] && flock $LOCK_FD
-    counter=$(( $counter + 1 ))
-
-    # write counter and unlock local mutex
-    echo $counter > /proc/$BASHPID/fd/$counter_mutex_fd
-    eval "exec ${counter_mutex_fd}<&-"
-    return 0
-}
-
-# recursive mutex unlock for all lnxrouter processes
-mutex_unlock() {
-    local counter_mutex_fd
-    local counter
-
-    # lock local mutex and read counter
-    counter_mutex_fd=$(get_avail_fd)
-    if [[ $counter_mutex_fd -ne 0 ]]; then
-        eval "exec $counter_mutex_fd<>$COUNTER_LOCK_FILE"
-        flock $counter_mutex_fd
-        read -u $counter_mutex_fd counter
-    else
-        echo "Failed to lock mutex counter" >&2
-        return 1
-    fi
-
-    # decrease counter and unlock global mutex
-    if [[ $counter -gt 0 ]]; then
-        counter=$(( $counter - 1 ))
-        [[ $counter -eq 0 ]] && flock -u $LOCK_FD
-    fi
-
-    # write counter and unlock local mutex
-    echo $counter > /proc/$BASHPID/fd/$counter_mutex_fd
-    eval "exec ${counter_mutex_fd}<&-"
-    return 0
-}
 
 # it takes 2 arguments
 # returns:
@@ -633,19 +531,16 @@ get_macaddr() {
 alloc_new_iface() { # only for wifi
     local i=0
     local v_iface_name=
-    mutex_lock
     while :; do
         v_iface_name="x$i${WIFI_IFACE}"
         if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/ifaces/${v_iface_name} ]]; then
             mkdir -p $COMMON_CONFDIR/ifaces
             touch $COMMON_CONFDIR/ifaces/${v_iface_name}
             echo ${v_iface_name}
-            mutex_unlock
             return
         fi
         i=$((i + 1))
     done
-    mutex_unlock
 }
 
 dealloc_iface() {
@@ -660,12 +555,10 @@ get_new_macaddr() {
     local OLDMAC NEWMAC LAST_BYTE i
     OLDMAC=$(get_macaddr "$1")
     LAST_BYTE=$(printf %d 0x${OLDMAC##*:})
-    mutex_lock
     for i in {1..255}; do
         NEWMAC="${OLDMAC%:*}:$(printf %02x $(( ($LAST_BYTE + $i) % 256 )))"
         (get_all_macaddrs | grep "$NEWMAC" > /dev/null 2>&1) || break
     done
-    mutex_unlock
     echo $NEWMAC
 }
 
@@ -673,7 +566,6 @@ get_new_macaddr() {
 haveged_watchdog() {
     local show_warn=1
     while :; do
-        mutex_lock
         if [[ $(cat /proc/sys/kernel/random/entropy_avail) -lt 1000 ]]; then
             if ! which haveged > /dev/null 2>&1; then
                 if [[ $show_warn -eq 1 ]]; then
@@ -686,8 +578,7 @@ haveged_watchdog() {
                 haveged -w 1024 -p $COMMON_CONFDIR/haveged.pid
             fi
         fi
-        mutex_unlock
-        sleep 2
+        sleep 5
     done
 }
 
@@ -741,7 +632,6 @@ networkmanager_add_unmanaged() {
         [[ -z "$MAC" ]] && return 1
     fi
 
-    mutex_lock
     UNMANAGED=$(grep -m1 -Eo '^unmanaged-devices=[[:alnum:]:;,-]*' /etc/NetworkManager/NetworkManager.conf)
 
     WAS_EMPTY=0
@@ -752,7 +642,6 @@ networkmanager_add_unmanaged() {
     for x in $UNMANAGED; do
         if [[ $x == "mac:${MAC}" ]] ||
                [[ $NM_OLDER_VERSION -eq 0 && $x == "interface-name:${1}" ]]; then
-            mutex_unlock
             return 2
         fi
     done
@@ -776,7 +665,6 @@ networkmanager_add_unmanaged() {
     fi
 
     ADDED_UNMANAGED="${ADDED_UNMANAGED} ${1} "
-    mutex_unlock
 
     local nm_pid=$(pidof NetworkManager)
     [[ -n "$nm_pid" ]] && kill -HUP $nm_pid
@@ -798,11 +686,9 @@ networkmanager_rm_unmanaged() {
         [[ -z "$MAC" ]] && return 1
     fi
 
-    mutex_lock
     UNMANAGED=$(grep -m1 -Eo '^unmanaged-devices=[[:alnum:]:;,-]*' /etc/NetworkManager/NetworkManager.conf | sed 's/unmanaged-devices=//' | tr ';,' ' ')
 
     if [[ -z "$UNMANAGED" ]]; then
-        mutex_unlock
         return 1
     fi
 
@@ -819,7 +705,6 @@ networkmanager_rm_unmanaged() {
     fi
 
     ADDED_UNMANAGED="${ADDED_UNMANAGED/ ${1} /}"
-    mutex_unlock
 
     local nm_pid=$(pidof NetworkManager)
     [[ -n "$nm_pid" ]] && kill -HUP $nm_pid
@@ -830,9 +715,7 @@ networkmanager_rm_unmanaged() {
 networkmanager_fix_unmanaged() {
     [[ -f ${NETWORKMANAGER_CONF} ]] || return
 
-    mutex_lock
     sed -e "/^unmanaged-devices=.*/d" -i ${NETWORKMANAGER_CONF}
-    mutex_unlock
 
     local nm_pid=$(pidof NetworkManager)
     [[ -n "$nm_pid" ]] && kill -HUP $nm_pid
@@ -878,6 +761,7 @@ start_nat() {
     iptables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
 }
 stop_nat() {
+    echo "iptables: stop NAT"
     iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
     iptables_ -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
     iptables_ -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
@@ -890,6 +774,7 @@ allow_dns_port() {
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
 }
 unallow_dns_port() {
+    echo "iptables: stop allowing DNS"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
 }
@@ -900,6 +785,7 @@ start_dhcp() {
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
 }
 stop_dhcp() {
+    echo "iptables: stop dhcp"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
 }
 
@@ -914,6 +800,7 @@ redirect_dns() {
     iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
 }
 unredirect_dns() {
+    echo "iptables: stop dns proxy "
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
 
@@ -941,6 +828,7 @@ start_redsocks() {
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
 }
 stop_redsocks() {
+    echo "iptables: stop transparent proxy"
     iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
     iptables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
     iptables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
@@ -949,32 +837,47 @@ stop_redsocks() {
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
 }
 
-_cleanup() {
-    local PID x
-
-    trap "" SIGINT SIGUSR1 SIGUSR2 EXIT SIGTERM
-    mutex_lock
-    #disown -a
-
-    # kill haveged_watchdog
-    [[ -n "$HAVEGED_WATCHDOG_PID" ]] && kill $HAVEGED_WATCHDOG_PID
-
-    # kill processes
+kill_processes() {
+    #echo "Killing processes"
+    local x  pid
     for x in $CONFDIR/*.pid; do
         # even if the $CONFDIR is empty, the for loop will assign
         # a value in $x. so we need to check if the value is a file
-        [[ -f $x ]] && kill  $(cat $x)
+        if [[ -f $x ]] &&  sleep 0.3  && [[ -f $x ]]; then
+            pid=$(cat $x)
+            pn=$( ps -p $pid -o comm= ) 
+            #echo "Killing $pid $pn ... "
+            kill $pid 2>/dev/null && ( echo "Killed $pid $pn" && rm $x ) || echo "Failed to kill $pid $pn, it may have exited"
+        fi
     done
+    
+}
+_cleanup() {
+    local PID x
+
+    #disown -a
 
     rm -rf $CONFDIR
 
+    ip addr flush ${SUBNET_IFACE}
+    if [[ $WIFI_IFACE && $NO_VIRT -eq 0 ]]; then
+        ip link set down dev ${AP_IFACE}
+        networkmanager_rm_unmanaged_if_needed ${VWIFI_IFACE} ${OLD_MACADDR}
+        iw dev ${VWIFI_IFACE} del
+        dealloc_iface $VWIFI_IFACE
+    else
+        if [[ -n "$NEW_MACADDR" ]]; then
+            ip link set dev ${TARGET_IFACE} address ${OLD_MACADDR} && echo "Restore ${TARGET_IFACE} to old MAC address ${OLD_MACADDR}"
+        fi
+        networkmanager_rm_unmanaged_if_needed ${TARGET_IFACE} ${OLD_MACADDR}
+    fi
 
     # if we are the last lnxrouter instance then set back the common values
     if ! has_running_instance; then
         echo "Exiting: This is the only running instance"
         # kill common processes
         for x in $COMMON_CONFDIR/*.pid; do
-            [[ -f $x ]] && kill -9 $(cat $x)
+            [[ -f $x ]] && kill -9 $(cat $x) && rm $x
         done
 
         # set old ip_forward
@@ -992,21 +895,6 @@ _cleanup() {
     fi
     
 
-    ip addr flush ${SUBNET_IFACE}
-    if [[ $WIFI_IFACE && $NO_VIRT -eq 0 ]]; then
-        ip link set down dev ${AP_IFACE}
-        networkmanager_rm_unmanaged_if_needed ${VWIFI_IFACE} ${OLD_MACADDR}
-        iw dev ${VWIFI_IFACE} del
-        dealloc_iface $VWIFI_IFACE
-    else
-        if [[ -n "$NEW_MACADDR" ]]; then
-            ip link set dev ${TARGET_IFACE} address ${OLD_MACADDR} && echo "Restore ${TARGET_IFACE} to old MAC address ${OLD_MACADDR}"
-        fi
-        networkmanager_rm_unmanaged_if_needed ${TARGET_IFACE} ${OLD_MACADDR}
-    fi
-
-    mutex_unlock
-    cleanup_lock
 }
 
 clean_iptables() {
@@ -1016,8 +904,6 @@ clean_iptables() {
     elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
         stop_redsocks
     fi
-
-
     
     if [[ "$DHCP_DNS" == "gateway" ]]; then
         unallow_dns_port
@@ -1033,45 +919,46 @@ clean_iptables() {
 }
 
 cleanup() {
+    trap "" SIGINT SIGUSR1 SIGUSR2 EXIT SIGTERM
     echo
     echo
     echo "Doing cleanup.. "
-    clean_iptables
+    kill_processes
+    clean_iptables  2> /dev/null
     _cleanup 2> /dev/null
+    
+    pgid=$(ps opgid= $$ |awk '{print $1}' )
+    kill -15 -$pgid
+    sleep 1 
     echo "Cleaning up done"
+    kill -9 -$pgid
 }
 
-die() {
+die() { # SIGUSR2
+    echo "Error occured"
     [[ -n "$1" ]] && echo -e "\nERROR: $1\n" >&2
     # send die signal to the main process
-    [[ $BASHPID -ne $$ ]] && kill -USR2 $$
-    # we don't need to call cleanup because it's traped on EXIT
-    #cleanup
+    [[ $BASHPID -ne $$ ]] && kill -USR2 $$ || cleanup
     exit 1
 }
 
-clean_exit() {
-    echo "clean_exit()"
+clean_exit() { # SIGUSR1
     # send clean_exit signal to the main process
-    [[ $BASHPID -ne $$ ]] && kill -USR1 $$
-    # we don't need to call cleanup because it's traped on EXIT
+    [[ $BASHPID -ne $$ ]] && kill -USR1 $$ || cleanup
     exit 0
 }
 
 list_running_conf() {
     local x
-    mutex_lock
     for x in $TMPDIR/lnxrouter.*; do
         if [[ -f $x/pid && -f $x/subn_iface && -d /proc/$(cat $x/pid) ]]; then
             echo $x
         fi
     done
-    mutex_unlock
 }
 
 list_running() {
     local IFACE subn_iface x
-    mutex_lock
     for x in $(list_running_conf); do
         IFACE=${x#*.}
         IFACE=${IFACE%%.*}
@@ -1083,7 +970,6 @@ list_running() {
             echo $(cat $x/pid) $IFACE '('$(cat $x/subn_iface)')'
         fi
     done
-    mutex_unlock
 }
 
 get_subn_iface_from_pid() {
@@ -1096,14 +982,12 @@ get_pid_from_subn_iface() {
 
 get_confdir_from_pid() {
     local IFACE x
-    mutex_lock
     for x in $(list_running_conf); do
         if [[ $(cat $x/pid) == "$1" ]]; then
             echo $x
             break
         fi
     done
-    mutex_unlock
 }
 
 print_client_by_mac() {
@@ -1181,17 +1065,14 @@ list_clients() {
 has_running_instance() {
     local PID x
 
-    mutex_lock
     for x in $TMPDIR/lnxrouter.*; do
         if [[ -f $x/pid ]]; then
             PID=$(cat $x/pid)
             if [[ -d /proc/$PID ]]; then
-                mutex_unlock
                 return 0
             fi
         fi
     done
-    mutex_lock
 
     return 1
 }
@@ -1203,11 +1084,9 @@ is_running_pid() {
 send_stop() {
     local x
 
-    mutex_lock
     # send stop signal to specific pid
     if is_running_pid $1; then
         kill -USR1 $1
-        mutex_unlock
         return
     fi
 
@@ -1215,20 +1094,14 @@ send_stop() {
     for x in $(list_running | grep -E " \(?${1}( |\)?\$)" | cut -f1 -d' '); do
         kill -USR1 $x
     done
-    mutex_unlock
 }
 
 
-trap "cleanup_lock" EXIT
 
-if ! init_lock; then
-    echo "ERROR: Failed to initialize lock" >&2
-    exit 1
-fi
 
 # if the user press ctrl+c or we get USR1 signal
 # then run clean_exit()
-trap "cleanup" SIGINT SIGUSR1 SIGTERM
+trap "clean_exit" SIGINT SIGUSR1 SIGTERM
 # if we get USR2 signal then run die().
 trap "die" SIGUSR2
 
@@ -1395,24 +1268,19 @@ else
 fi
 echo "Target interface is ${TARGET_IFACE}"
 
-mutex_lock
-#trap "cleanup" EXIT
-CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXXXXXXX)
+trap "cleanup" EXIT
+CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)
+chmod 755 $CONFDIR
 #echo "Config dir: $CONFDIR"
 echo "PID: $$"
 echo $$ > $CONFDIR/pid
 
-# to make --list-running work from any user, we must give read
-# permissions to $CONFDIR and $CONFDIR/pid
-chmod 755 $CONFDIR
-chmod 444 $CONFDIR/pid
 
 COMMON_CONFDIR=$TMPDIR/lnxrouter.common.conf
 mkdir -p $COMMON_CONFDIR
 
 cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
 
-mutex_unlock
 
 if [[ $WIFI_IFACE ]]; then
 
@@ -1479,10 +1347,7 @@ else
     SUBNET_IFACE=${TARGET_IFACE}
 fi
 
-mutex_lock
 echo $SUBNET_IFACE > $CONFDIR/subn_iface
-chmod 444 $CONFDIR/subn_iface
-mutex_unlock
 
 if [[ $WIFI_IFACE ]]; then
 
@@ -1568,7 +1433,7 @@ EOF
     else
         echo "Warning: Wifi is not protected by password" >&2
     fi
-
+chmod 600 $CONFDIR/hostapd.conf
 fi
 
 #===================================================
@@ -1605,9 +1470,11 @@ except-interface=*
 no-dhcp-interface=lo
 dhcp-range=${GATEWAY%.*}.1,${GATEWAY%.*}.254,255.255.255.0,24h
 dhcp-option-force=option:router,${GATEWAY}
-log-dhcp
-log-facility=/dev/stdout
+#log-dhcp
+log-facility=/dev/null
 EOF
+# 'log-dhcp' show too much logs. Using '-d' in dnsmasq command shows a proper dhcp log
+# if use '-d', 'log-facility' should = /dev/null
     if [[ "$DHCP_DNS" != "no" ]]; then
         if [[ "$DHCP_DNS" == "gateway" ]]; then
             dns_offer="$GATEWAY"
@@ -1652,7 +1519,7 @@ if [[ "$SHARE_METHOD" == "none" ]]; then
     echo "No Internet sharing"
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
     start_nat
-    echo 1 > /proc/sys/net/ipv4/ip_forward || die
+    echo 1 > /proc/sys/net/ipv4/ip_forward || die "Failed enabling system ipv4 forwarding"
     # to enable clients to establish PPTP connections we must
     # load nf_nat_pptp module
     modprobe nf_nat_pptp > /dev/null 2>&1
@@ -1684,15 +1551,20 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
         complain dnsmasq
     fi
 
-    umask 0033
     echo 
     echo "Starting dnsmasq"
-    dnsmasq -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases || die & 
-    while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
-        sleep 1
-    done
-    echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
-    umask $SCRIPT_UMASK
+    # dnsmasq '-x' works only when no '-d' (run in foreground)
+    # Using '-d' dnsmasq will not turn into 'nobody'
+    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases & 
+    DNSMASQ_PID=$!
+    echo "dnsmasq PID: $DNSMASQ_PID"
+    #while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
+    #    sleep 1
+    #done
+    #echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
+    #(wait $DNSMASQ_PID ; die "dnsmasq failed") &
+    ( while [ -e /proc/$DNSMASQ_PID ]; do sleep 1; done ; die "dnsmasq exited" ) &
+    sleep 2
 
 fi
 
@@ -1702,6 +1574,7 @@ if [[ $WIFI_IFACE ]]; then
     if [[ $NO_HAVEGED -eq 0 ]]; then
         haveged_watchdog &
         HAVEGED_WATCHDOG_PID=$!
+        echo $HAVEGED_WATCHDOG_PID > $CONFDIR/haveged_watchdog.pid
         echo "haveged_watchdog PID: $HAVEGED_WATCHDOG_PID" 
     fi
 
@@ -1714,36 +1587,29 @@ if [[ $WIFI_IFACE ]]; then
     fi
     echo 
     echo "Starting hostapd"
-    # $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS -B -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf || die &
-    $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS $CONFDIR/hostapd.conf &
+    # hostapd '-P' works only when use '-B' (run in background)
+    $STDBUF_PATH $HOSTAPD $HOSTAPD_DEBUG_ARGS -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf  &
     HOSTAPD_PID=$!
     echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
-
-    while [[ ! -f $CONFDIR/hostapd.pid ]]; do
-        sleep 1
-    done
-    echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
+    echo -n "hostapd PID: $HOSTAPD_PID"
+    #while [[ ! -f $CONFDIR/hostapd.pid ]]; do
+    #    sleep 1
+    #done
+    #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
+    ( while [ -e /proc/$HOSTAPD_PID ]; do sleep 1; done ; die "hostapd exited" ) &
 
 
 fi
 
-KEEP_RUNNING_PID=
-keep_running() {
-    while :; do
-        sleep 9999
-    done 
-}
 
 sleep 2
 # need loop to keep this script running
-keep_running &
+bash -c "while :; do sleep 3 ; done " &
 KEEP_RUNNING_PID=$!
 echo $KEEP_RUNNING_PID > $CONFDIR/keep_running.pid
 
-#jobs
+#jobs -p
 
 wait $KEEP_RUNNING_PID
 
-
-#clean_exit
-#cleanup
+clean_exit
