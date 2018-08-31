@@ -65,6 +65,11 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 # lnxrouter -i eth1
 ```
 
+### Provide an interface's Internet to another interface
+```
+# lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1
+```
+
 ### Create Wifi hotspot
 
 ```
@@ -167,7 +172,10 @@ Options:
     -i <interface>          Interface to make NATed sub-network,
                             and to provide Internet to
                             (To create Wifi hotspot use '--ap' instead)
-    -n                      Disable Internet sharing
+    -o <interface>          Specify an inteface to provide Internet from.
+                            (Note using this with default DNS option may leak
+                            queries to other interfaces)
+    -n                      Do not provide Internet
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
                             (default: 192.168.18.1)
@@ -175,7 +183,7 @@ Options:
     --p6 <prefix>           Set IPv6 prefix (length 64)
                             (default: fd00:1:1:1:: )
                             
-    --dns <ip>|<port>|<ip:port>  
+    --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
                             (default: use /etc/resolve.conf)

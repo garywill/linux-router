@@ -21,7 +21,10 @@ Options:
     -i <interface>          Interface to make NATed sub-network,
                             and to provide Internet to
                             (To create Wifi hotspot use '--ap' instead)
-    -n                      Disable Internet sharing
+    -o <interface>          Specify an inteface to provide Internet from.
+                            (Note using this with default DNS option may leak
+                            queries to other interfaces)
+    -n                      Do not provide Internet
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
                             (default: 192.168.18.1)
@@ -122,6 +125,7 @@ ETC_HOSTS=0
 ADDN_HOSTS=
 SUBNET_IFACE=
 CONN_IFACE=
+INTERNET_IFACE=
 THISHOSTNAME=
 
 SHARE_METHOD=nat
@@ -173,6 +177,11 @@ while [[ -n "$1" ]]; do
         -i)
             shift
             CONN_IFACE="$1"
+            shift
+            ;;
+        -o)
+            shift
+            INTERNET_IFACE="$1"
             shift
             ;;
         -n)
@@ -658,26 +667,33 @@ ip6tables_()
 }
 
 start_nat() {
+    if [[ $INTERNET_IFACE ]]; then
+        IPTABLES_NAT_OUT="-o ${INTERNET_IFACE}"
+        IPTABLES_NAT_IN="-i ${INTERNET_IFACE}"
+        MASQUERADE_NOTOUT=""
+    else
+        MASQUERADE_NOTOUT="! -o ${SUBNET_IFACE}"
+    fi
     echo
     echo "iptables: NAT "
-    iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
-    iptables_ -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-    iptables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
+    iptables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    iptables_ -v -I FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
     if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -v -t nat -I POSTROUTING -s ${PREFIX6}/64 ! -d ${PREFIX6}/64 ! -o ${SUBNET_IFACE} -j MASQUERADE || die
-        ip6tables_ -v -I FORWARD -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j ACCEPT || die
-        ip6tables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${PREFIX6}/64 -j ACCEPT || die
+        ip6tables_ -v -t nat -I POSTROUTING -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE || die
+        ip6tables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT || die
+        ip6tables_ -v -I FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d ${PREFIX6}/64 -j ACCEPT || die
     fi
 }
 stop_nat() {
     echo "iptables: stop NAT"
-    iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -d ${GATEWAY%.*}.0/24 ! -o ${SUBNET_IFACE} -j MASQUERADE
-    iptables_ -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
-    iptables_ -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
+    iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE
+    iptables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT
+    iptables_ -D FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT
     if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -t nat -D POSTROUTING -s ${PREFIX6}/64 ! -d ${PREFIX6}/64 ! -o ${SUBNET_IFACE} -j MASQUERADE
-        ip6tables_ -D FORWARD -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j ACCEPT
-        ip6tables_ -D FORWARD -o ${SUBNET_IFACE} -d ${PREFIX6}/64 -j ACCEPT
+        ip6tables_ -t nat -D POSTROUTING -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE
+        ip6tables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT
+        ip6tables_ -D FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${PREFIX6}/64 -j ACCEPT
     fi
 }
 
@@ -1503,6 +1519,7 @@ fi
 if [[ "$SHARE_METHOD" == "none" ]]; then
     echo "No Internet sharing"
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
+    [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS, queries may leak to other interfaces!!!\n" >&2
     start_nat
     echo 1 > /proc/sys/net/ipv4/ip_forward || die "Failed enabling system ipv4 forwarding"
     if [[ $IPV6 -eq 1 ]]; then
