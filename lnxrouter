@@ -29,8 +29,13 @@ Options:
     --p6 <prefix>           Set IPv6 prefix (length 64)
                             (default: fd00:1:1:1:: )
                             
-    --no-serve-dns          Do not serve DNS
-    --no-dnsmasq            Disable dnsmasq server completely (DHCP, DNS, RA)
+    --dns <ip>|<port>|<ip:port>
+                            DNS server's upstream DNS.
+                            Use ',' to seperate multiple servers
+                            (default: use /etc/resolve.conf)
+                            (Note IPv6 addresses need '[]' around)
+    --no-dns                Do not serve DNS
+    --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
     --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host)
@@ -46,8 +51,7 @@ Options:
  
     --tp <port>             Transparent proxy,
                             redirect non-LAN tcp and udp traffic to port.
-                            Usually used with '--dns-proxy'
-    --dns-proxy <port>      DNS server redirects queries to
+                            Usually used with '--dns'
     
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
@@ -93,7 +97,7 @@ Examples:
     $PROGNAME --ap wlan0 MyAccessPoint
     $PROGNAME --ap wlan0 MyAccessPoint --password MyPassPhrase
     $PROGNAME -n --ap wlan0 MyAccessPoint --password MyPassPhrase
-    $PROGNAME -i eth1 --tp <transparent-proxy> --dns-proxy <dns-proxy>
+    $PROGNAME -i eth1 --tp <transparent-proxy> --dns <dns-proxy>
 EOF
 }
 
@@ -119,7 +123,7 @@ CONN_IFACE=
 
 SHARE_METHOD=nat
 TP_PORT=
-TP_DNS_PORT=
+DNS=
 
 NEW_MACADDR=
 OLD_MACADDR=
@@ -199,12 +203,12 @@ while [[ -n "$1" ]]; do
             shift
             ;;
             
-        --dns-proxy)
+        --dns)
             shift
-            TP_DNS_PORT="$1"
+            DNS="$1"
             shift
             ;;
-        --no-serve-dns)
+        --no-dns)
             shift
             dnsmasq_NO_DNS=1
             ;;
@@ -369,6 +373,38 @@ while [[ -n "$1" ]]; do
             ;;
     esac
 done
+
+sep_ip_port() {
+    local IP
+    local PORT
+    local INPUT
+    INPUT="$1"
+    if (echo $INPUT | grep '\.' >/dev/null 2>&1) ;then  
+        if (echo $INPUT | grep ':' >/dev/null 2>&1) ;then
+            # ipv4 + port
+            IP="$(echo $INPUT | cut -d: -f1)"
+            PORT="$(echo $INPUT | cut -d: -f2)"
+        else
+            # ipv4
+            IP="$INPUT"
+        fi
+    elif (echo $INPUT | grep '\]' >/dev/null 2>&1) ;then 
+        if (echo $INPUT | grep '\]\:' >/dev/null 2>&1) ;then
+            # ipv6 + port
+            IP="$(echo $INPUT | cut -d']' -f1 | cut -d'[' -f2)"
+            PORT="$(echo $INPUT | cut -d']' -f2 |cut -d: -f2)"
+        else
+            # ipv6
+            IP="$(echo $INPUT | cut -d']' -f1 | cut -d'[' -f2)"
+        fi
+    else 
+        # port
+        IP='127.0.0.1'
+        PORT="$INPUT"
+    fi
+    printf -v "$2" %s "$IP"
+    printf -v "$3" %s "$PORT"
+}
 
 USE_IWCONFIG=0
 
@@ -1359,11 +1395,17 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
         echo log-queries=extra >> $CONFDIR/dnsmasq.conf
     fi
     
-    if [[ $TP_DNS_PORT ]]; then
+    if [[ $DNS ]]; then
+        DNS_count=$(echo $DNS | awk -F, '{print NF}')
+        for (( i=1;i<=DNS_count;i++ )); do
+            sep_ip_port "$(echo $DNS | cut -d, -f$i)" DNS_IP DNS_PORT
+            [[ "$DNS_PORT" ]] && DNS_PORT_D="#$DNS_PORT"
+            echo "server=${DNS_IP}${DNS_PORT_D}" >> $CONFDIR/dnsmasq.conf
+        done
+        
         cat <<- EOF >> $CONFDIR/dnsmasq.conf
 			no-resolv
 			no-poll
-			server=127.0.0.1#${TP_DNS_PORT}
 		EOF
     fi
     if [[ $IPV6 -eq 1 ]];then

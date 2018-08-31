@@ -81,7 +81,7 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ### Transparent proxy with Tor
 
 ```
-# lnxrouter -i eth1 --tp 9040 --dns-proxy 9053
+# lnxrouter -i eth1 --tp 9040 --dns 9053
 ```
 
 In `torrc`
@@ -133,7 +133,7 @@ $ lxc profile add <container> profile5
 ```
 That should make one container have 2 profiles. `profile5` will override `eth0`.
 ```
-# lnxrouter -i lxdbr5 --tp 9040 --dns-proxy 9053
+# lnxrouter -i lxdbr5 --tp 9040 --dns 9053
 ```
 To remove that new profile from container
 ```
@@ -153,47 +153,52 @@ $ lxc config device remove <container> eth0
 ### Use as transparent proxy for VirtualBox
 On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
 ```
-# lnxrouter -i vboxnet5 --tp 9040 --dns-proxy 9053
+# lnxrouter -i vboxnet5 --tp 9040 --dns 9053
 ```
 ### CLI usage and other features
 
 ```
-Usage: lnxrouter [options] 
+Usage: lnxrouter <options>
 
 Options:
     -h, --help              Show this help
     --version               Print version number
 
-    -i <interface>          Interface to share Internet to.
-                            An NATed subnet is made upon it.
-                            To create Wifi hotspot use '--ap' instead
+    -i <interface>          Interface to make NATed sub-network,
+                            and to provide Internet to
+                            (To create Wifi hotspot use '--ap' instead)
     -n                      Disable Internet sharing
-    --tp <port>             Transparent proxy.
-                            redirect non-LAN tcp and udp traffic to port.
-                            Usually used with '--dns-proxy'
     
-    -g <gateway>            Set gateway IPv4 address, netmask is /24 .
+    -g <ip>                 Set this host's IPv4 address, netmask is 24 
                             (default: 192.168.18.1)
     -6                      Enable IPv6 (NAT)
     --p6 <prefix>           Set IPv6 prefix (length 64)
                             (default: fd00:1:1:1:: )
-    --dns-proxy <port>      DNS server redirect queries to port
-    --no-serve-dns          Disable DNS server
-    --no-dnsmasq            Disable dnsmasq server completely (DHCP, DNS, RA)
-    --log-dns               Show DNS server query log
+                            
+    --dns <ip>|<port>|<ip:port>  
+                            DNS server's upstream DNS.
+                            Use ',' to seperate multiple servers
+                            (default: use /etc/resolve.conf)
+                            (Note IPv6 addresses need '[]' around)
+    --no-dns                Do not serve DNS
+    --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
+    --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
-                            Set IPv4 DNS offered by DHCP 
-                            (default: gateway as DNS)
+                            Set IPv4 DNS offered by DHCP (default: this host)
     --dhcp-dns6 <IP1[,IP2]>|no
-                            Set IPv6 DNS offered by DHCP(RA) 
-                            (default: gateway as DNS)
-                            Note IPv6 addresses need '[]' around
+                            Set IPv6 DNS offered by DHCP (RA) 
+                            (default: this host)
+                            (Note IPv6 addresses need '[]' around)
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
     
     --mac <MAC>             Set MAC address
  
+    --tp <port>             Transparent proxy,
+                            redirect non-LAN tcp and udp traffic to port.
+                            Usually used with '--dns'
+    
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
@@ -217,10 +222,12 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
+    
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
     --vht_capab <VHT>       VHT capabilities
+    
     --no-haveged            Do not run haveged automatically when needed
 
   Instance managing:
