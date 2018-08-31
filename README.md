@@ -4,6 +4,8 @@ Set Linux as router in one command. Able to Provide Internet, or create Wifi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c`.
 
+[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+
 ## Features
 
 Basic features:
@@ -211,11 +213,11 @@ Options:
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
     -n                      Do not provide Internet
-
+    
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
-    --p6 <prefix>           Set IPv6 prefix (length 64)
-
+    --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
+                            
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
@@ -223,6 +225,8 @@ Options:
                             (Note IPv6 addresses need '[]' around)
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
+    --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
+                            that destination port is 53 to this host
     --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host)
@@ -235,18 +239,18 @@ Options:
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
-
+    
     --mac <MAC>             Set MAC address
-
+ 
     --tp <port>             Transparent proxy,
-                            redirect non-LAN tcp and udp traffic to port.
+                            redirect non-LAN TCP and UDP traffic to port.
                             Usually used with '--dns'
-
+    
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
     --password <password>   Wifi password
-
+    
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
@@ -265,12 +269,12 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-
+    
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
     --vht_capab <VHT>       VHT capabilities
-
+    
     --no-haveged            Do not run haveged automatically when needed
 
   Instance managing:

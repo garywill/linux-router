@@ -37,6 +37,8 @@ Options:
                             (Note IPv6 addresses need '[]' around)
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
+    --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
+                            that destination port is 53 to this host
     --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host)
@@ -53,7 +55,7 @@ Options:
     --mac <MAC>             Set MAC address
  
     --tp <port>             Transparent proxy,
-                            redirect non-LAN tcp and udp traffic to port.
+                            redirect non-LAN TCP and UDP traffic to port.
                             Usually used with '--dns'
     
   Wifi hotspot options:
@@ -118,6 +120,7 @@ DHCP_DNS=gateway
 DHCP_DNS6=gateway
 dnsmasq_NO_DNS=0
 NO_DNSMASQ=0
+CATCH_DNS=0
 SHOW_DNS_QUERY=0
 ETC_HOSTS=0
 ADDN_HOSTS=
@@ -236,6 +239,10 @@ while [[ -n "$1" ]]; do
             DHCP_DNS6="$1"
             shift
             ;;
+        --catch-dns)
+            shift
+            CATCH_DNS=1
+            ;;    
         --log-dns)
             shift
             SHOW_DNS_QUERY=1
@@ -753,6 +760,26 @@ unallow_dns_port() {
     fi
 }
 
+start_catch_dns() {
+    echo
+    echo "iptables: redirect all TCP/UDP packet that destination port is 53"
+    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
+    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
+        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
+    fi
+}
+stop_catch_dns() {
+    echo "iptables: stop redirecting DNS queries"
+    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 
+    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 
+        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 
+    fi
+}
+
 start_dhcp() {
     echo 
     echo "iptables: allow DHCP port access"
@@ -891,6 +918,8 @@ clean_iptables() {
     if [[ "$DHCP_DNS" == "gateway" || "$DHCP_DNS6" == "gateway" ]]; then
         unallow_dns_port
     fi
+    
+    [[ "$CATCH_DNS" -eq 1 ]] && stop_catch_dns
     
     
     if [[ $NO_DNSMASQ -eq 0 ]]; then
@@ -1590,6 +1619,8 @@ fi
 if [[ "$DHCP_DNS" == "gateway" || "$DHCP_DNS6" == "gateway" ]]; then
     allow_dns_port
 fi
+
+[[ "$CATCH_DNS" -eq 1 ]] && start_catch_dns
 
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
