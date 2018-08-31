@@ -70,7 +70,7 @@ usage() {
     echo "Non-Bridging Options:"
     echo "  --no-dns                Disable dnsmasq DNS server"
     echo "  --no-dnsmasq            Disable dnsmasq server completely"
-    echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.12.1)"
+    echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
     echo "  -d                      DNS server will take into account /etc/hosts"
     echo "  -e <hosts_file>         DNS server will take into account additional hosts file"
     echo
@@ -592,7 +592,7 @@ networkmanager_wait_until_unmanaged() {
 
 
 CHANNEL=default
-GATEWAY=192.168.12.1
+GATEWAY=192.168.18.1
 WPA_VERSION=1+2
 ETC_HOSTS=0
 ADDN_HOSTS=
