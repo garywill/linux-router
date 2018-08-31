@@ -27,10 +27,8 @@ Options:
     -n                      Do not provide Internet
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
-                            (default: 192.168.18.1)
     -6                      Enable IPv6 (NAT)
-    --p6 <prefix>           Set IPv6 prefix (length 64)
-                            (default: fd00:1:1:1:: )
+    --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
                             
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
@@ -111,8 +109,8 @@ if [[ "$1" == "" ]]; then
     exit 0
 fi
 
-GATEWAY=192.168.18.1
-PREFIX6=fd00:1:1:1::
+GATEWAY=
+PREFIX6=
 IID6=1
 IPV6=0
 ROUTE_ADDRS=
@@ -588,6 +586,44 @@ get_new_macaddr() {
     echo $NEWMAC
 }
 
+is_ip4_range_available() {
+    ( ip -4 address | grep "inet 192\.168\.$1\." > /dev/null 2>&1 ) && return 1
+    ( ip -4 route | grep "^192\.168\.$1\." > /dev/null 2>&1 ) && return 1
+    ( ip -4 route get 192.168.$1.0 | grep "\bvia\b" > /dev/null 2>&1 ) && \
+    ( ip -4 route get 192.168.$1.255 | grep "\bvia\b" > /dev/null 2>&1 )  && return 0
+    return 1
+}
+is_ip6_range_available() {
+    ( ip -6 address | grep -i "inet6 fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
+    ( ip -6 route | grep -i "^fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
+    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:: | grep "\bvia\b" > /dev/null 2>&1 ) && \
+    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:ffff:ffff:ffff:ffff | grep "\bvia\b" > /dev/null 2>&1 )  && return 0
+    return 1
+}
+
+generate_random_ip4() {
+    local random_ip4
+    while :; do
+        random_ip4=$(($RANDOM%256))
+        is_ip4_range_available $random_ip4 && break
+    done
+    GATEWAY="192.168.$random_ip4.1"
+}
+generate_random_ip6() {
+    local r1 r2 r3 r4 r5 r6 r7
+    while :; do
+        r1=$( printf "%x" $(($RANDOM%240+16)) )
+        r2=$( printf "%x" $(($RANDOM%240+16)) )
+        r3=$( printf "%x" $(($RANDOM%240+16)) )
+        r4=$( printf "%x" $(($RANDOM%240+16)) )
+        r5=$( printf "%x" $(($RANDOM%240+16)) )
+        r6=$( printf "%x" $(($RANDOM%240+16)) )
+        r7=$( printf "%x" $(($RANDOM%240+16)) )
+        is_ip6_range_available $r1 $r2 $r3 $r4 $r5 $r6 $r7 && break
+    done
+    PREFIX6="fd$r1:$r2$r3:$r4$r5:$r6$r7::"
+}
+
 # start haveged when needed
 haveged_watchdog() {
     local show_warn=1
@@ -1046,19 +1082,6 @@ send_stop() {
 ## ========================================================
 ## ========================================================
 
-if [[ $TP_PORT ]]; then
-    SHARE_METHOD=redsocks
-fi
-
-
-if [[ $IPV6 -eq 1 ]]; then
-    GATEWAY6=${PREFIX6}${IID6}
-fi
-
-if [[ $DHCP_DNS != 'gateway' && $DHCP_DNS6 != 'gateway' ]]; then
-    dnsmasq_NO_DNS=1
-fi
-
 if [[ -d /dev/shm ]]; then
     TMPD=/dev/shm
 elif [[ -d /run/shm ]]; then
@@ -1202,6 +1225,27 @@ else
     exit 1
 fi
 echo "Target interface is ${TARGET_IFACE}"
+
+
+if [[ ! -n $GATEWAY ]]; then
+    generate_random_ip4
+    echo "Use random IPv4 address $GATEWAY"
+fi
+if [[ $IPV6 -eq 1 && ! -n $PREFIX6 ]]; then
+    generate_random_ip6
+    echo "Use random IPv6 address ${PREFIX6}${IID6}"
+fi
+if [[ $IPV6 -eq 1 ]]; then
+    GATEWAY6=${PREFIX6}${IID6}
+fi
+
+if [[ $TP_PORT ]]; then
+    SHARE_METHOD=redsocks
+fi
+
+if [[ $DHCP_DNS != 'gateway' && $DHCP_DNS6 != 'gateway' ]]; then
+    dnsmasq_NO_DNS=1
+fi
 
 #=================
 # begin to do some change on config files and system
@@ -1567,7 +1611,7 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     #while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
     #    sleep 1
     #done
-    #echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
+    echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
     #(wait $DNSMASQ_PID ; die "dnsmasq failed") &
     ( while [ -e /proc/$DNSMASQ_PID ]; do sleep 10; done ; die "dnsmasq exited" ) &
     sleep 2

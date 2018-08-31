@@ -1,11 +1,10 @@
-#  Linux-router
+# Linux-router
 
 Set Linux as router in one command. Able to Provide Internet, or create Wifi hotspot. Support transparent proxy (redsocks). Also useful for routing VM/containers.
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c`.
 
- 
-##  Features
+## Features
 
 Basic features:
 
@@ -26,6 +25,7 @@ Basic features:
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
 
 ### Useful in these situations
+
 ```
 Internet----(eth0/wlan0)-Linux-(wlanX)AP
                                        |--client
@@ -56,7 +56,7 @@ Internet----(eth0/wlan0)-Linux-(eth1)------Another PC
 ```
 Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ```
- 
+
 ## Usage
 
 ### Provide Internet to an interface
@@ -66,6 +66,7 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ```
 
 ### Provide an interface's Internet to another interface
+
 ```
 # lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1
 ```
@@ -97,28 +98,38 @@ DNSPort 0.0.0.0:9053
 TransPort [::]:9040 
 DNSPort [::]:9053
 ```
+
 ### Internet for LXC
+
 Create a bridge
+
 ```
 # brctl addbr lxcbr5
 ```
+
 In LXC container `config`
+
 ```
 lxc.network.type = veth
 lxc.network.flags = up
 lxc.network.link = lxcbr5
 lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 ```
+
 ```
 # lnxrouter -i lxcbr5
 ```
 
 ### Use as transparent proxy for LXD
+
 Create a bridge
+
 ```
 # brctl addbr lxdbr5
 ```
+
 Create and add LXD profile
+
 ```
 $ lxc profile create profile5
 $ lxc profile edit profile5
@@ -136,30 +147,54 @@ name: profile5
 
 $ lxc profile add <container> profile5
 ```
+
 That should make one container have 2 profiles. `profile5` will override `eth0`.
+
 ```
 # lnxrouter -i lxdbr5 --tp 9040 --dns 9053
 ```
+
 To remove that new profile from container
+
 ```
 $ lxc profile remove <container> profile5
 ```
 
 #### To not use profile
+
 Add device `eth0` to container overriding default `eth0`
+
 ```
 $ lxc config device add <container> eth0 nic name=eth0 nictype=bridged parent=lxdbr5
 ```
+
 To remove the customized `eth0` to restore default `eth0`
+
 ```
 $ lxc config device remove <container> eth0
 ```
 
 ### Use as transparent proxy for VirtualBox
+
 On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
+
 ```
 # lnxrouter -i vboxnet5 --tp 9040 --dns 9053
 ```
+
+### Use as transparent proxy for firejail
+
+Create a bridge
+
+```
+# brctl addbr firejail5
+```
+
+```
+# lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
+$ firejail --net=firejail5 --dns=192.168.55.1
+```
+
 ### CLI usage and other features
 
 ```
@@ -176,13 +211,11 @@ Options:
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
     -n                      Do not provide Internet
-    
+
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
-                            (default: 192.168.18.1)
     -6                      Enable IPv6 (NAT)
     --p6 <prefix>           Set IPv6 prefix (length 64)
-                            (default: fd00:1:1:1:: )
-                            
+
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
@@ -202,18 +235,18 @@ Options:
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
-    
+
     --mac <MAC>             Set MAC address
- 
+
     --tp <port>             Transparent proxy,
                             redirect non-LAN tcp and udp traffic to port.
                             Usually used with '--dns'
-    
+
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
     --password <password>   Wifi password
-    
+
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
@@ -232,12 +265,12 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-    
+
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
     --vht_capab <VHT>       VHT capabilities
-    
+
     --no-haveged            Do not run haveged automatically when needed
 
   Instance managing:
@@ -248,11 +281,13 @@ Options:
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
 ```
+
 > These changes to system will not be restored by script's cleanup:
-1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`, needed by NAT Internet sharing.
-2. dnsmasq in Apparmor complain mode
+> 1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`, needed by NAT Internet sharing.
+> 2. dnsmasq in Apparmor complain mode
 
 ## Dependencies
+
 - bash
 - procps or procps-ng
 - iproute2
@@ -269,8 +304,12 @@ Wifi hotspot:
 ## TODO
 
 - Option to ban private network access
-- Option to randomize MAC, IP, SSID, password
+- Option to randomize MAC
 - Option to redirect all DNS traffic
+
+## Donate
+
+[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 ## Thanks
 
