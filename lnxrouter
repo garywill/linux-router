@@ -12,7 +12,7 @@
 #    dnsmasq
 #    iptables
 
-VERSION=0.4.6
+VERSION=0.5.0
 PROGNAME="$(basename $0)"
 
 # make sure that all command outputs are in english
@@ -25,12 +25,15 @@ SCRIPT_UMASK=0077
 umask $SCRIPT_UMASK
 
 usage() {
+    echo "$PROGNAME $VERSION (https://github.com/garywill/linux-router)"
+    echo "$PROGNAME is a fork of create_ap(https://github.com/oblique/create_ap)"
+    echo 
     echo "Usage: "$PROGNAME" [options] "
     echo
     echo "Options:"
     echo "  -h, --help              Show this help"
     echo "  --version               Print version number"
-    
+    echo
 
     
     #echo "  -m <method>             Method for Internet sharing."
@@ -38,9 +41,9 @@ usage() {
     #echo "                               'redsocks' for transparent proxy. Usually use with --dns-proxy"
     #echo "                               'none' for no Internet sharing (equivalent to -n)"
     echo "  -n                      Disable Internet sharing"
-    echo "  --tp <port>              Transparent proxy, redirect tcp and udp traffic to port."
+    echo "  --tp <port>             Transparent proxy (redsocks), redirect tcp and udp traffic to port."
     echo "                          Usually use with --dns-proxy"
-    
+    echo 
     echo "  -g <gateway>            IPv4 Gateway for the Access Point (default: 192.168.18.1)"
     echo "  --dns-proxy <port>      Redirect 53 port to DNS proxy port. dnsmasq DNS is disabled"
     echo "  --no-dnsmasq-dns        dnsmasq DNS disabled"
@@ -50,14 +53,14 @@ usage() {
     echo "                          Set DNS offered by DHCP, or no DNS offered (default: gateway as DNS)"
     echo "  -d                      DNS server will take into account /etc/hosts"
     echo "  -e <hosts_file>         DNS server will take into account additional hosts file"
-    
+    echo 
     echo "  --mac <MAC>             Set MAC address"
-    
-    
+    echo 
+    echo " Wifi hotspot options:"
     echo "  --ap <wifi-interface> <access-point-name>"
     echo "                          Create Wifi access point"
     echo "  --password <passphrase> Wifi password"
-    
+    echo 
     echo "  --hidden                Make the Access Point hidden (do not broadcast the SSID)"
     echo "  -c <channel>            Channel number (default: 1)"
     echo "  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)"
@@ -76,17 +79,17 @@ usage() {
     echo "  --no-virt               Do not create virtual interface"
     echo "  --no-haveged            Do not run 'haveged' automatically when needed"
     echo "  --fix-unmanaged         If NetworkManager shows your interface as unmanaged after you"
-    echo "                          close create_ap, then use this option to switch your interface"
+    echo "                          close lnxrouter, then use this option to switch your interface"
     echo "                          back to managed"
-    
-
-    echo "  --daemon                Run create_ap in the background"
-    echo "  --stop <id>             Send stop command to an already running create_ap. For an <id>"
-    echo "                          you can put the PID of create_ap or the WiFi interface. You can"
+    echo
+    echo " Instant managing:"
+    echo "  --daemon                Run lnxrouter in the background"
+    echo "  --stop <id>             Send stop command to an already running lnxrouter. For an <id>"
+    echo "                          you can put the PID of lnxrouter or the WiFi interface. You can"
     echo "                          get them with --list-running"
-    echo "  --list-running          Show the create_ap processes that are already running"
-    echo "  --list-clients <id>     List the clients connected to create_ap instance associated with <id>."
-    echo "                          For an <id> you can put the PID of create_ap or the WiFi interface."
+    echo "  --list-running          Show the lnxrouter processes that are already running"
+    echo "  --list-clients <id>     List the clients connected to lnxrouter instance associated with <id>."
+    echo "                          For an <id> you can put the PID of lnxrouter or the WiFi interface."
     echo "                          If virtual WiFi interface was created, then use that one."
     echo "                          You can get them with --list-running"
 
@@ -374,14 +377,14 @@ get_avail_fd() {
 }
 
 # lock file for the mutex counter
-COUNTER_LOCK_FILE=/tmp/create_ap.$$.lock
+COUNTER_LOCK_FILE=/tmp/lnxrouter.$$.lock
 
 cleanup_lock() {
     rm -f $COUNTER_LOCK_FILE
 }
 
 init_lock() {
-    local LOCK_FILE=/tmp/create_ap.all.lock
+    local LOCK_FILE=/tmp/lnxrouter.all.lock
 
     # we initialize only once
     [[ $LOCK_FD -ne 0 ]] && return 0
@@ -407,7 +410,7 @@ init_lock() {
     return $?
 }
 
-# recursive mutex lock for all create_ap processes
+# recursive mutex lock for all lnxrouter processes
 mutex_lock() {
     local counter_mutex_fd
     local counter
@@ -433,7 +436,7 @@ mutex_lock() {
     return 0
 }
 
-# recursive mutex unlock for all create_ap processes
+# recursive mutex unlock for all lnxrouter processes
 mutex_unlock() {
     local counter_mutex_fd
     local counter
@@ -954,7 +957,7 @@ _cleanup() {
     rm -rf $CONFDIR
 
 
-    # if we are the last create_ap instance then set back the common values
+    # if we are the last lnxrouter instance then set back the common values
     if ! has_running_instance; then
         # kill common processes
         for x in $COMMON_CONFDIR/*.pid; do
@@ -1044,7 +1047,7 @@ clean_exit() {
 list_running_conf() {
     local x
     mutex_lock
-    for x in /tmp/create_ap.*; do
+    for x in /tmp/lnxrouter.*; do
         if [[ -f $x/pid && -f $x/wifi_iface && -d /proc/$(cat $x/pid) ]]; then
             echo $x
         fi
@@ -1148,7 +1151,7 @@ has_running_instance() {
     local PID x
 
     mutex_lock
-    for x in /tmp/create_ap.*; do
+    for x in /tmp/lnxrouter.*; do
         if [[ -f $x/pid ]]; then
             PID=$(cat $x/pid)
             if [[ -d /proc/$PID ]]; then
@@ -1206,6 +1209,10 @@ if [[ $TP_DNS_PORT ]]; then
     dnsmasq_NO_DNS=1
 fi
 
+if [[ $SHARE_METHOD == 'none' ]]; then
+    dnsmasq_NO_DNS=1
+fi
+
 if [[ $LIST_RUNNING -eq 1 ]]; then
     echo -e "List of running $PROGNAME instances:\n"
     list_running
@@ -1236,7 +1243,7 @@ fi
 
 if [[ $DAEMONIZE -eq 1 && $RUNNING_AS_DAEMON -eq 0 ]]; then
     echo "Running as Daemon..."
-    # run a detached create_ap
+    # run a detached lnxrouter
     RUNNING_AS_DAEMON=1 setsid "$0" "${ARGS[@]}" &
     exit 0
 fi
@@ -1344,7 +1351,7 @@ fi
 
 mutex_lock
 trap "cleanup" EXIT
-CONFDIR=$(mktemp -d /tmp/create_ap.${WIFI_IFACE}.conf.XXXXXXXX)
+CONFDIR=$(mktemp -d /tmp/lnxrouter.${WIFI_IFACE}.conf.XXXXXXXX)
 echo "Config dir: $CONFDIR"
 echo "PID: $$"
 echo $$ > $CONFDIR/pid
@@ -1354,7 +1361,7 @@ echo $$ > $CONFDIR/pid
 chmod 755 $CONFDIR
 chmod 444 $CONFDIR/pid
 
-COMMON_CONFDIR=/tmp/create_ap.common.conf
+COMMON_CONFDIR=/tmp/lnxrouter.common.conf
 mkdir -p $COMMON_CONFDIR
 
 cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
@@ -1648,7 +1655,7 @@ if ! wait $HOSTAPD_PID; then
     echo -e "\nError: Failed to run hostapd, maybe a program is interfering." >&2
     if networkmanager_is_running; then
         echo "If an error like 'n80211: Could not configure driver mode' was thrown" >&2
-        echo "try running the following before starting create_ap:" >&2
+        echo "try running the following before starting lnxrouter:" >&2
         if [[ $NM_OLDER_VERSION -eq 1 ]]; then
             echo "    nmcli nm wifi off" >&2
         else
