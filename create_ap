@@ -688,7 +688,10 @@ _cleanup() {
         iptables -w -t nat -D PREROUTING -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} \
             -p udp -m udp --dport 53 -j REDIRECT --to-ports $DNS_PORT
     fi
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    
+    if [[ $NO_DNSMASQ -eq 0 ]]; then
+        iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    fi
     
     ip link set down dev ${AP_IFACE}
     ip addr flush ${AP_IFACE}
