@@ -25,15 +25,14 @@ SCRIPT_UMASK=0077
 umask $SCRIPT_UMASK
 
 usage() {
-    echo "Usage: "$PROGNAME" [options] <wifi-interface> [<interface-with-internet>] [<access-point-name> [<passphrase>]]"
+    echo "Usage: "$PROGNAME" [options] <wifi-interface> [<access-point-name> [<passphrase>]]"
     echo
     echo "Options:"
     echo "  -h, --help              Show this help"
     echo "  --version               Print version number"
     echo "  -c <channel>            Channel number (default: 1)"
     echo "  -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both (default: 1+2)"
-    echo "  -n                      Disable Internet sharing (if you use this, don't pass"
-    echo "                          the <interface-with-internet> argument)"
+    echo "  -n                      Disable Internet sharing"
     echo "  -m <method>             Method for Internet sharing."
     echo "                          Use: 'nat' for NAT (default)"
     echo "                               'none' for no Internet sharing (equivalent to -n)"
@@ -80,14 +79,14 @@ usage() {
     echo "  * You can pass your SSID and password through pipe or through arguments (see examples)."
     echo
     echo "Examples:"
-    echo "  "$PROGNAME" wlan0 eth0 MyAccessPoint MyPassPhrase"
-    echo "  echo -e 'MyAccessPoint\nMyPassPhrase' | "$PROGNAME" wlan0 eth0"
-    echo "  "$PROGNAME" wlan0 eth0 MyAccessPoint"
-    echo "  echo 'MyAccessPoint' | "$PROGNAME" wlan0 eth0"
-    echo "  "$PROGNAME" wlan0 wlan0 MyAccessPoint MyPassPhrase"
+    echo "  "$PROGNAME" wlan0 MyAccessPoint MyPassPhrase"
+    echo "  echo -e 'MyAccessPoint\nMyPassPhrase' | "$PROGNAME" wlan0"
+    echo "  "$PROGNAME" wlan0 MyAccessPoint"
+    echo "  echo 'MyAccessPoint' | "$PROGNAME" wlan0"
+    echo "  "$PROGNAME" wlan0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" -n wlan0 MyAccessPoint MyPassPhrase"
-    echo "  "$PROGNAME" --driver rtl871xdrv wlan0 eth0 MyAccessPoint MyPassPhrase"
-    echo "  "$PROGNAME" --daemon wlan0 eth0 MyAccessPoint MyPassPhrase"
+    echo "  "$PROGNAME" --driver rtl871xdrv wlan0 MyAccessPoint MyPassPhrase"
+    echo "  "$PROGNAME" --daemon wlan0 MyAccessPoint MyPassPhrase"
     echo "  "$PROGNAME" --stop wlan0"
 }
 
@@ -358,10 +357,6 @@ get_macaddr() {
     cat "/sys/class/net/${1}/address"
 }
 
-get_mtu() {
-    is_interface "$1" || return
-    cat "/sys/class/net/${1}/mtu"
-}
 
 alloc_new_iface() {
     local prefix=$1
@@ -629,7 +624,6 @@ LIST_CLIENTS_ID=
 CONFDIR=
 WIFI_IFACE=
 VWIFI_IFACE=
-INTERNET_IFACE=
 OLD_MACADDR=
 IP_ADDRS=
 ROUTE_ADDRS=
@@ -655,19 +649,6 @@ _cleanup() {
 
     rm -rf $CONFDIR
 
-    local found=0
-    for x in $(list_running_conf); do
-        if [[ -f $x/nat_internet_iface && $(cat $x/nat_internet_iface) == $INTERNET_IFACE ]]; then
-            found=1
-            break
-        fi
-    done
-
-    if [[ $found -eq 0 ]]; then
-        cp -f $COMMON_CONFDIR/${INTERNET_IFACE}_forwarding \
-           /proc/sys/net/ipv4/conf/$INTERNET_IFACE/forwarding
-        rm -f $COMMON_CONFDIR/${INTERNET_IFACE}_forwarding
-    fi
 
     # if we are the last create_ap instance then set back the common values
     if ! has_running_instance; then
@@ -697,7 +678,7 @@ _cleanup() {
         if [[ "$SHARE_METHOD" == "nat" ]]; then
             iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${WIFI_IFACE} -j MASQUERADE
             iptables -w -D FORWARD -i ${WIFI_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
-            iptables -w -D FORWARD -i ${INTERNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
+            iptables -w -D FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT
         fi
     fi
 
@@ -1222,7 +1203,7 @@ if [[ -n "$NEW_MACADDR" ]]; then
 fi
 
 if [[ "$SHARE_METHOD" != "none" ]]; then
-    MIN_REQUIRED_ARGS=2
+    MIN_REQUIRED_ARGS=1
 else
     MIN_REQUIRED_ARGS=1
 fi
@@ -1233,9 +1214,8 @@ if [[ $# -gt $MIN_REQUIRED_ARGS ]]; then
             usage >&2
             exit 1
         fi
-        INTERNET_IFACE="$2"
-        SSID="$3"
-        PASSPHRASE="$4"
+        SSID="$2"
+        PASSPHRASE="$3"
     else
         if [[ $# -ne 2 && $# -ne 3 ]]; then
             usage >&2
@@ -1250,7 +1230,6 @@ else
             usage >&2
             exit 1
         fi
-        INTERNET_IFACE="$2"
     fi
     if tty -s; then
         while :; do
@@ -1291,10 +1270,6 @@ else
     fi
 fi
 
-if [[ "$SHARE_METHOD" != "none" ]] && ! is_interface $INTERNET_IFACE; then
-    echo "ERROR: '${INTERNET_IFACE}' is not an interface" >&2
-    exit 1
-fi
 
 if [[ ${#SSID} -lt 1 || ${#SSID} -gt 32 ]]; then
     echo "ERROR: Invalid SSID length ${#SSID} (expected 1..32)" >&2
@@ -1319,11 +1294,6 @@ if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^rtl[0-9].*$ ]]; then
     echo "WARN: If AP doesn't work, please read: howto/realtek.md" >&2
 fi
 
-if [[ $NO_VIRT -eq 1 && "$WIFI_IFACE" == "$INTERNET_IFACE" ]]; then
-    echo -n "ERROR: You can not share your connection from the same" >&2
-    echo " interface if you are using --no-virt option." >&2
-    exit 1
-fi
 
 mutex_lock
 trap "cleanup" EXIT
@@ -1340,11 +1310,6 @@ chmod 444 $CONFDIR/pid
 COMMON_CONFDIR=/tmp/create_ap.common.conf
 mkdir -p $COMMON_CONFDIR
 
-if [[ "$SHARE_METHOD" == "nat" ]]; then
-    echo $INTERNET_IFACE > $CONFDIR/nat_internet_iface
-    cp -n /proc/sys/net/ipv4/conf/$INTERNET_IFACE/forwarding \
-       $COMMON_CONFDIR/${INTERNET_IFACE}_forwarding
-fi
 cp -n /proc/sys/net/ipv4/ip_forward $COMMON_CONFDIR
 if [[ -e /proc/sys/net/bridge/bridge-nf-call-iptables ]]; then
     cp -n /proc/sys/net/bridge/bridge-nf-call-iptables $COMMON_CONFDIR
@@ -1523,7 +1488,7 @@ dhcp-range=${GATEWAY%.*}.1,${GATEWAY%.*}.254,255.255.255.0,24h
 dhcp-option-force=option:router,${GATEWAY}
 dhcp-option-force=option:dns-server,${DHCP_DNS}
 EOF
-    MTU=$(get_mtu $INTERNET_IFACE)
+    MTU=1280 # TODO temporary value. This used to be read from the INTERNET_IFACE
     [[ -n "$MTU" ]] && echo "dhcp-option-force=option:mtu,${MTU}" >> $CONFDIR/dnsmasq.conf
     [[ $ETC_HOSTS -eq 0 ]] && echo no-hosts >> $CONFDIR/dnsmasq.conf
     [[ -n "$ADDN_HOSTS" ]] && echo "addn-hosts=${ADDN_HOSTS}" >> $CONFDIR/dnsmasq.conf
@@ -1552,8 +1517,7 @@ if [[ "$SHARE_METHOD" != "none" ]]; then
     if [[ "$SHARE_METHOD" == "nat" ]]; then
         iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 ! -o ${WIFI_IFACE} -j MASQUERADE || die
         iptables -w -v -I FORWARD -i ${WIFI_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-        iptables -w -v -I FORWARD -i ${INTERNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
-        echo 1 > /proc/sys/net/ipv4/conf/$INTERNET_IFACE/forwarding || die
+        iptables -w -v -I FORWARD -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
         echo 1 > /proc/sys/net/ipv4/ip_forward || die
         # to enable clients to establish PPTP connections we must
         # load nf_nat_pptp module
