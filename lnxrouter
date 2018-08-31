@@ -874,81 +874,89 @@ networkmanager_wait_until_unmanaged() {
     return 0
 }
 
-
-
+alias iptables="iptables -w"
+iptables_()
+{
+    iptables $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+}
 
 start_nat() {
-    echo Setting iptables rules to NAT 
-    iptables -w -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE || die
-    iptables -w -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-    iptables -w -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    echo
+    echo "iptables: NAT "
+    iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE || die
+    iptables_ -v -I FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    iptables_ -v -I FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
 }
 stop_nat() {
-    iptables -w -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE
-    iptables -w -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
-    iptables -w -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
+    iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24  -j MASQUERADE
+    iptables_ -D FORWARD -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j ACCEPT
+    iptables_ -D FORWARD -o ${SUBNET_IFACE} -d ${GATEWAY%.*}.0/24 -j ACCEPT
 }
 
 allow_dns_port() {
-    echo Setting iptables rules to allow DNS port access
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
+    echo
+    echo "iptables: allow DNS port access"
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
 }
 unallow_dns_port() {
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
 }
 
 start_dhcp() {
-    echo Setting iptables rules to allow DHCP port access
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+    echo 
+    echo "iptables: allow DHCP port access"
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
 }
 stop_dhcp() {
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
 }
 
 redirect_dns() {
-    echo "Redirect port 53 to ${TP_DNS_PORT}"
+    echo
+    echo "iptables: redirect port 53 to ${TP_DNS_PORT}"
     # allow input to  dns proxy port
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT || die
-    iptables -w -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT || die
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT || die
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT || die
     # redirect 53 to dns proxy
-    iptables -w -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
-    iptables -w -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
+    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
+    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT} || die
 }
 unredirect_dns() {
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport ${TP_DNS_PORT} -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport ${TP_DNS_PORT} -j ACCEPT
 
-    iptables -w -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
-    iptables -w -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
+    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports ${TP_DNS_PORT}
 }
 
 start_redsocks() {
-    echo "Redirect all TCP and UDP traffic to transparent proxy port ${TP_PORT}"
-    iptables -w -t nat -N REDSOCKS-${SUBNET_IFACE} || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
-    iptables -w -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
-    iptables -v -w -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-    iptables -v -w -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+    echo
+    echo "iptables: redirect all TCP and UDP traffic to transparent proxy port ${TP_PORT}"
+    iptables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
+    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
+    iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+    iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-    iptables -v -w -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j REDSOCKS-${SUBNET_IFACE} || die
+    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j REDSOCKS-${SUBNET_IFACE} || die
 
-    iptables -v -w -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-    iptables -v -w -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
 }
 stop_redsocks() {
-    iptables -w -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
-    iptables -w -t nat -F REDSOCKS-${SUBNET_IFACE}
-    iptables -w -t nat -X REDSOCKS-${SUBNET_IFACE}
+    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
+    iptables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
+    iptables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
     
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
-    iptables -w -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
 }
 
 _cleanup() {
