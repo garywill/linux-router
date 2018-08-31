@@ -590,7 +590,9 @@ networkmanager_is_running() {
 
 networkmanager_iface_is_unmanaged() {
     is_interface "$1" || return 2
+    (nmcli -t -f DEVICE d 2>&1 | grep -Fxq "$1") || return 0 # NM doesn't know this interface
     (nmcli -t -f DEVICE,STATE d 2>&1 | grep -E "^$1:unmanaged$" > /dev/null 2>&1) || return 1
+    return 0 # is unmanaged
 }
 
 ADDED_UNMANAGED=
