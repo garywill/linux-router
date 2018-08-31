@@ -382,8 +382,8 @@ cleanup_lock() {
     rm -f $COUNTER_LOCK_FILE
 }
 
+LOCK_FILE=$TMPDIR/lnxrouter.all.lock
 init_lock() {
-    local LOCK_FILE=/tmp/lnxrouter.all.lock
 
     # we initialize only once
     [[ $LOCK_FD -ne 0 ]] && return 0
@@ -952,9 +952,9 @@ stop_redsocks() {
 _cleanup() {
     local PID x
 
-    trap "" SIGINT SIGUSR1 SIGUSR2 EXIT
+    trap "" SIGINT SIGUSR1 SIGUSR2 EXIT SIGTERM
     mutex_lock
-    disown -a
+    #disown -a
 
     # kill haveged_watchdog
     [[ -n "$HAVEGED_WATCHDOG_PID" ]] && kill $HAVEGED_WATCHDOG_PID
@@ -963,7 +963,7 @@ _cleanup() {
     for x in $CONFDIR/*.pid; do
         # even if the $CONFDIR is empty, the for loop will assign
         # a value in $x. so we need to check if the value is a file
-        [[ -f $x ]] && kill -9 $(cat $x)
+        [[ -f $x ]] && kill  $(cat $x)
     done
 
     rm -rf $CONFDIR
@@ -986,6 +986,7 @@ _cleanup() {
 
 
         rm -rf $COMMON_CONFDIR
+        rm -f $LOCK_FILE
     else
         echo "Exiting: This is NOT the only running instance"
     fi
@@ -1045,6 +1046,7 @@ die() {
     # send die signal to the main process
     [[ $BASHPID -ne $$ ]] && kill -USR2 $$
     # we don't need to call cleanup because it's traped on EXIT
+    #cleanup
     exit 1
 }
 
@@ -1226,7 +1228,7 @@ fi
 
 # if the user press ctrl+c or we get USR1 signal
 # then run clean_exit()
-trap "clean_exit" SIGINT SIGUSR1
+trap "cleanup" SIGINT SIGUSR1 SIGTERM
 # if we get USR2 signal then run die().
 trap "die" SIGUSR2
 
@@ -1394,7 +1396,7 @@ fi
 echo "Target interface is ${TARGET_IFACE}"
 
 mutex_lock
-trap "cleanup" EXIT
+#trap "cleanup" EXIT
 CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXXXXXXX)
 #echo "Config dir: $CONFDIR"
 echo "PID: $$"
@@ -1688,10 +1690,12 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     dnsmasq -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases || die & 
     while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
         sleep 1
-        echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
     done
+    echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
     umask $SCRIPT_UMASK
+
 fi
+
 
 if [[ $WIFI_IFACE ]]; then
 
@@ -1713,31 +1717,33 @@ if [[ $WIFI_IFACE ]]; then
     $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -B $CONFDIR/hostapd.conf -P $CONFDIR/hostapd.pid || die &
     while [[ ! -f $CONFDIR/hostapd.pid ]]; do
         sleep 1
-        echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
     done
     
     #HOSTAPD_PID=$!
     #echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
+    
+    echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
 
-    if ! wait $HOSTAPD_PID; then
-        echo -e "\nError: Failed to run hostapd, maybe a program is interfering." >&2
-        if networkmanager_is_running; then
-            echo "If an error like 'n80211: Could not configure driver mode' was thrown" >&2
-            echo "try running the following before starting lnxrouter:" >&2
-            if [[ $NM_OLDER_VERSION -eq 1 ]]; then
-                echo "    nmcli nm wifi off" >&2
-            else
-                echo "    nmcli r wifi off" >&2
-            fi
-            echo "    rfkill unblock wlan" >&2
-        fi
-        die
-    fi
-else
-    # need loop to keep this script running
-    while :; do
-        sleep 9999
-    done
+
 fi
 
-clean_exit
+KEEP_RUNNING_PID=
+keep_running() {
+    while :; do
+        sleep 9999
+    done 
+}
+
+sleep 2
+# need loop to keep this script running
+keep_running &
+KEEP_RUNNING_PID=$!
+echo $KEEP_RUNNING_PID > $CONFDIR/keep_running.pid
+
+#jobs
+
+wait $KEEP_RUNNING_PID
+
+
+#clean_exit
+#cleanup
