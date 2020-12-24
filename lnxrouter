@@ -864,6 +864,7 @@ kill_processes() {
             pid=$(cat $x)
             pn=$( ps -p $pid -o comm= ) 
             #echo "Killing $pid $pn ... "
+            pkill -P $pid
             kill $pid 2>/dev/null && ( echo "Killed $pid $pn" && rm $x ) || echo "Failed to kill $pid $pn, it may have exited"
         fi
     done
@@ -940,7 +941,7 @@ cleanup() {
     kill -15 -$pgid
     sleep 1 
     echo "Cleaning up done"
-    kill -9 -$pgid
+    #kill -9 -$pgid
 }
 
 die() { # SIGUSR2
