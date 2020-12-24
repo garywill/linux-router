@@ -14,11 +14,10 @@ Basic features:
 - Provide Internet
 - DHCP server and RA
 - DNS server 
-- IPv6 (NAT only for now)
+- IPv6 (behind NATed LAN, like IPv4)
 - Creating Wifi hotspot:
   - Channel selecting
   - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
-  - Hidden SSID
   - Create AP on the same interface you are getting Internet (require same channel)
 - Transparent proxy (redsocks)
 - DNS proxy
@@ -64,49 +63,38 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ### Provide Internet to an interface
 
 ```
-# lnxrouter -i eth1
+sudo lnxrouter -i eth1
 ```
 
 ### Provide an interface's Internet to another interface
 
 ```
-# lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1
+sudo lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1
 ```
+> Read _Notice 1_
 
 ### Create Wifi hotspot
 
 ```
-# lnxrouter --ap wlan0 MyAccessPoint --password MyPassPhrase
+sudo lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
 
 ### LAN without Internet
 
 ```
-# lnxrouter -n -i eth1
-# lnxrouter -n --ap wlan0 MyAccessPoint --password MyPassPhrase
+sudo lnxrouter -n -i eth1
+sudo lnxrouter -n --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
 
-### Transparent proxy with Tor
+> Read _Notice 1_
 
-```
-# lnxrouter -i eth1 --tp 9040 --dns 9053
-```
-
-In `torrc`
-
-```
-TransPort 0.0.0.0:9040 
-DNSPort 0.0.0.0:9053
-TransPort [::]:9040 
-DNSPort [::]:9053
-```
 
 ### Internet for LXC
 
 Create a bridge
 
 ```
-# brctl addbr lxcbr5
+sudo brctl addbr lxcbr5
 ```
 
 In LXC container `config`
@@ -119,22 +107,52 @@ lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 ```
 
 ```
-# lnxrouter -i lxcbr5
+sudo lnxrouter -i lxcbr5
 ```
+
+### Transparent proxy with Tor
+
+```
+sudo lnxrouter -i eth1 --tp 9040 --dns 9053 -g 192.168.55.1 --p6 fd00:5:6:7::
+```
+
+In `torrc`
+
+```
+TransPort 192.168.55.1:9040 
+DNSPort 192.168.55.1:9053
+TransPort [fd00:5:6:7::1]:9040 
+DNSPort [fd00:5:6:7::1]:9053
+```
+
+### Clients-in-sandbox network
+
+To not give our infomation to clients:
+
+```
+sudo lnxrouter -i eth1 \
+    --tp 9040 --dns 9053 \
+    --random-mac \
+    --ban-priv \
+    --catch-dns --log-dns   # optional
+```
+
+> This script comes with no warrenty, use on your own risk
+
 
 ### Use as transparent proxy for LXD
 
 Create a bridge
 
 ```
-# brctl addbr lxdbr5
+sudo brctl addbr lxdbr5
 ```
 
-Create and add LXD profile
+Create and add a new LXD profile overriding container's `eth0`
 
 ```
-$ lxc profile create profile5
-$ lxc profile edit profile5
+lxc profile create profile5
+lxc profile edit profile5
 
 ### profile content ###
 config: {}
@@ -147,33 +165,31 @@ devices:
     type: nic
 name: profile5
 
-$ lxc profile add <container> profile5
+lxc profile add <container> profile5
 ```
 
-That should make one container have 2 profiles. `profile5` will override container's`eth0`.
-
 ```
-# lnxrouter -i lxdbr5 --tp 9040 --dns 9053
+sudo lnxrouter -i lxdbr5 --tp 9040 --dns 9053
 ```
 
 To remove that new profile from container
 
 ```
-$ lxc profile remove <container> profile5
+lxc profile remove <container> profile5
 ```
 
 #### To not use profile
 
-Add device `eth0` to container overriding default `eth0`
+Add new `eth0` to container overriding default `eth0`
 
 ```
-$ lxc config device add <container> eth0 nic name=eth0 nictype=bridged parent=lxdbr5
+lxc config device add <container> eth0 nic name=eth0 nictype=bridged parent=lxdbr5
 ```
 
 To remove the customized `eth0` to restore default `eth0`
 
 ```
-$ lxc config device remove <container> eth0
+lxc config device remove <container> eth0
 ```
 
 ### Use as transparent proxy for VirtualBox
@@ -181,7 +197,7 @@ $ lxc config device remove <container> eth0
 On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
 
 ```
-# lnxrouter -i vboxnet5 --tp 9040 --dns 9053
+sudo lnxrouter -i vboxnet5 --tp 9040 --dns 9053
 ```
 
 ### Use as transparent proxy for firejail
@@ -189,12 +205,12 @@ On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP
 Create a bridge
 
 ```
-# brctl addbr firejail5
+sudo brctl addbr firejail5
 ```
 
 ```
-# lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
-$ firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd
+sudo lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
+firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd
 ```
 
 ### CLI usage and other features
@@ -220,7 +236,8 @@ Options:
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
                             
-    --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
+    --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
+                            (example: fd00:1:2:3::) Using this enables '-6'
                             
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
@@ -256,6 +273,7 @@ Options:
                             Create Wifi access point
     -p, --password <password>   
                             Wifi password
+    --qr                    Show Wifi QR code in terminal
     
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -314,9 +332,13 @@ Options:
    - iw
    - iwconfig (you only need this if 'iw' can not recognize your adapter)
    - haveged (optional)
+   - qrencode (opional)
 
 ## TODO
 
+- WPA3
+- Global IPv6
+- Refactor clients(neighbors) listing
 - Explictly ban forwarding if not needed
 
 ## Donate

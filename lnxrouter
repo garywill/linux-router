@@ -33,7 +33,8 @@ Options:
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
                             
-    --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
+    --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
+                            (example: fd00:1:2:3::) Using this enables '-6'
                             
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
@@ -69,6 +70,7 @@ Options:
                             Create Wifi access point
     -p, --password <password>   
                             Wifi password
+    --qr                    Show Wifi QR code in terminal
     
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -172,6 +174,7 @@ NO_HAVEGED=0
 HOSTAPD_DEBUG_ARGS=
 USE_PSK=0
 ISOLATE_CLIENTS=0
+QR=0
 
 LIST_RUNNING=0
 STOP_ID=
@@ -187,7 +190,7 @@ while [[ -n "$1" ]]; do
             exit 0
             ;;
         --version)
-            echo $VERSION
+            echo "$VERSION"
             exit 0
             ;;
         -i)
@@ -240,6 +243,7 @@ while [[ -n "$1" ]]; do
         --p6)
             shift
             PREFIX6="$1"
+            IPV6=1
             shift
             ;;
         --mac)
@@ -314,6 +318,10 @@ while [[ -n "$1" ]]; do
             shift
             PASSPHRASE="$1"
             shift
+            ;;
+        --qr)
+            shift
+            QR=1
             ;;
             
             
@@ -437,8 +445,8 @@ sep_ip_port() {
     local PORT
     local INPUT
     INPUT="$1"
-    if (echo $INPUT | grep '\.' >/dev/null 2>&1) ;then  
-        if (echo $INPUT | grep ':' >/dev/null 2>&1) ;then
+    if (echo "$INPUT" | grep '\.' >/dev/null 2>&1) ;then  
+        if (echo "$INPUT" | grep ':' >/dev/null 2>&1) ;then
             # ipv4 + port
             IP="$(echo $INPUT | cut -d: -f1)"
             PORT="$(echo $INPUT | cut -d: -f2)"
@@ -446,8 +454,8 @@ sep_ip_port() {
             # ipv4
             IP="$INPUT"
         fi
-    elif (echo $INPUT | grep '\]' >/dev/null 2>&1) ;then 
-        if (echo $INPUT | grep '\]\:' >/dev/null 2>&1) ;then
+    elif (echo "$INPUT" | grep '\]' >/dev/null 2>&1) ;then 
+        if (echo "$INPUT" | grep '\]\:' >/dev/null 2>&1) ;then
             # ipv6 + port
             IP="$(echo $INPUT | cut -d']' -f1 | cut -d'[' -f2)"
             PORT="$(echo $INPUT | cut -d']' -f2 |cut -d: -f2)"
@@ -476,7 +484,7 @@ get_phy_device() { # only for wifi interface
     for x in /sys/class/ieee80211/*; do
         [[ ! -e "$x" ]] && continue
         if [[ "${x##*/}" = "$1" ]]; then
-            echo $1
+            echo "$1"
             return 0
         elif [[ -e "$x/device/net/$1" ]]; then
             echo ${x##*/}
@@ -601,7 +609,7 @@ alloc_new_iface() { # only for wifi
         if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/ifaces/${v_iface_name} ]]; then
             mkdir -p $COMMON_CONFDIR/ifaces
             touch $COMMON_CONFDIR/ifaces/${v_iface_name}
-            echo ${v_iface_name}
+            echo "${v_iface_name}"
             return
         fi
         i=$((i + 1))
@@ -626,7 +634,7 @@ get_new_macaddr() {
         NEWMAC="${OLDMAC%:*}:$(printf %02x $(( ($LAST_BYTE + $i) % 256 )))"
         (get_all_macaddrs | grep "$NEWMAC" > /dev/null 2>&1) || break
     done
-    echo $NEWMAC
+    echo "$NEWMAC"
 }
 
 generate_random_mac() {
@@ -1094,7 +1102,7 @@ list_running_conf() {
     local x
     for x in $TMPDIR/lnxrouter.*; do
         if [[ -f $x/pid && -f $x/subn_iface && -d /proc/$(cat $x/pid) ]]; then
-            echo $x
+            echo "$x"
         fi
     done
 }
@@ -1126,7 +1134,7 @@ get_confdir_from_pid() {
     local IFACE x
     for x in $(list_running_conf); do
         if [[ $(cat $x/pid) == "$1" ]]; then
-            echo $x
+            echo "$x"
             break
         fi
     done
@@ -1138,8 +1146,8 @@ print_client_by_mac() {
 
     if [[ -f $CONFDIR/dnsmasq.leases ]]; then
         line=$(grep " $mac " $CONFDIR/dnsmasq.leases | tail -n 1)
-        ipaddr=$(echo $line | cut -d' ' -f3)
-        hostname=$(echo $line | cut -d' ' -f4)
+        ipaddr=$(echo "$line" | cut -d' ' -f3)
+        hostname=$(echo "$line" | cut -d' ' -f4)
     fi
 
     [[ -z "$ipaddr" ]] && ipaddr="*"
@@ -1155,9 +1163,9 @@ print_clients_in_leases() {
     if [[ -f $CONFDIR/dnsmasq.leases ]]; then
         while read line
         do
-            mac=$(echo $line | cut -d' ' -f2)
-            ipaddr=$(echo $line | cut -d' ' -f3)
-            hostname=$(echo $line | cut -d' ' -f4)
+            mac=$(echo "$line" | cut -d' ' -f2)
+            ipaddr=$(echo "$line" | cut -d' ' -f3)
+            hostname=$(echo "$line" | cut -d' ' -f4)
             
             printf "%-20s %-18s %s\n" "MAC" "IP" "Hostname"
             printf "%-20s %-18s %s\n" "$mac" "$ipaddr" "$hostname"
@@ -1489,7 +1497,7 @@ else
     SUBNET_IFACE=${TARGET_IFACE}
 fi
 
-echo $SUBNET_IFACE > $CONFDIR/subn_iface
+echo "$SUBNET_IFACE" > $CONFDIR/subn_iface
 
 if [[ $WIFI_IFACE ]]; then
 
@@ -1637,7 +1645,7 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
     fi
     
     if [[ $DNS ]]; then
-        DNS_count=$(echo $DNS | awk -F, '{print NF}')
+        DNS_count=$(echo "$DNS" | awk -F, '{print NF}')
         for (( i=1;i<=DNS_count;i++ )); do
             sep_ip_port "$(echo $DNS | cut -d, -f$i)" DNS_IP DNS_PORT
             [[ "$DNS_PORT" ]] && DNS_PORT_D="#$DNS_PORT"
@@ -1684,7 +1692,7 @@ if [[ $WIFI_IFACE ]]; then
     if [[ $NO_HAVEGED -eq 0 ]]; then
         haveged_watchdog &
         HAVEGED_WATCHDOG_PID=$!
-        echo $HAVEGED_WATCHDOG_PID > $CONFDIR/haveged_watchdog.pid
+        echo "$HAVEGED_WATCHDOG_PID" > $CONFDIR/haveged_watchdog.pid
         echo "haveged_watchdog PID: $HAVEGED_WATCHDOG_PID" 
     fi
 
@@ -1700,7 +1708,7 @@ if [[ $WIFI_IFACE ]]; then
     # hostapd '-P' works only when use '-B' (run in background)
     $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -P $CONFDIR/hostapd.pid $CONFDIR/hostapd.conf  &
     HOSTAPD_PID=$!
-    echo $HOSTAPD_PID > $CONFDIR/hostapd.pid
+    echo "$HOSTAPD_PID" > $CONFDIR/hostapd.pid
     echo "hostapd PID: $HOSTAPD_PID"
     #while [[ ! -f $CONFDIR/hostapd.pid ]]; do
     #    sleep 1
@@ -1794,12 +1802,31 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
 
 fi
 
+show_qr() {
+    local T S P H
+    S="$SSID"
+    if [[ -n "$PASSPHRASE" ]]; then
+        T="WPA"
+        P="$PASSPHRASE"
+    else
+        T="nopass"
+    fi
+    [[ "$HIDDEN" -eq 1 ]] && H="true"
+    echo "Scan QR code on phone to connect to WiFi"
+    qrencode -m 2 -t ANSIUTF8 "WIFI:T:${T};S:${S};P:${P};H:${H};"
+    echo "Use this command to save QR code to image file:"
+    echo "    qrencode -m 2 -o <file> \"WIFI:T:${T};S:${S};P:${P};H:${H};\""
+}
+
 echo 
 echo "== Setting up completed, now linux-router is working =="
+
+[[ "$QR" -eq 1 ]] && show_qr
+
 # need loop to keep this script running
 bash -c "while :; do sleep 8000 ; done " &
 KEEP_RUNNING_PID=$!
-echo $KEEP_RUNNING_PID > $CONFDIR/keep_running.pid
+echo "$KEEP_RUNNING_PID" > $CONFDIR/keep_running.pid
 wait $KEEP_RUNNING_PID
 
 clean_exit
