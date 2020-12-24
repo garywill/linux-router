@@ -217,9 +217,9 @@ Options:
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
-    --no4                   Disable IPv4 Internet (not forwarding IPv4).
-                            Usually used with '-6'
-                            (See Notice 1)
+    --no4                   Disable IPv4 Internet (not forwarding IPv4)
+                            (See Notice 1). Usually used with '-6'
+                            
     --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
                             
     --dns <ip>|<port>|<ip:port>
@@ -317,10 +317,15 @@ Wifi hotspot:
 ## TODO
 
 - Option to randomize MAC
+- Explictly ban forwarding if not needed
 
 ## Donate
 
-[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md), or just give a star!
+[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time!
+
+（ ^_^）o自自o（^_^ ）
+
+No? Okay, or just give me a star!
 
 ## Thanks
 

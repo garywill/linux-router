@@ -30,9 +30,9 @@ Options:
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
-    --no4                   Disable IPv4 Internet (not forwarding IPv4).
-                            Usually used with '-6'
-                            (See Notice 1)
+    --no4                   Disable IPv4 Internet (not forwarding IPv4)
+                            (See Notice 1). Usually used with '-6'
+                            
     --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
                             
     --dns <ip>|<port>|<ip:port>
@@ -196,14 +196,14 @@ while [[ -n "$1" ]]; do
             INTERNET_IFACE="$1"
             shift
             echo ""
-            echo "Since you're using in this mode, make sure you've read Notice 1" >&2
+            echo "WARN: Since you're using in this mode, make sure you've read Notice 1" >&2
             echo ""
             ;;
         -n)
             shift
             SHARE_METHOD=none
             echo ""
-            echo "Since you're using in this mode, make sure you've read Notice 1" >&2
+            echo "WARN: Since you're using in this mode, make sure you've read Notice 1" >&2
             echo ""
             ;;
         --ban-priv)
@@ -230,7 +230,7 @@ while [[ -n "$1" ]]; do
             shift
             NO4=1
             echo ""
-            echo "Since you're using in this mode, make sure you've read Notice 1" >&2
+            echo "WARN: Since you're using in this mode, make sure you've read Notice 1" >&2
             echo ""
             ;;
         --p6)
@@ -624,15 +624,15 @@ get_new_macaddr() {
 is_ip4_range_available() {
     ( ip -4 address | grep "inet 192\.168\.$1\." > /dev/null 2>&1 ) && return 1
     ( ip -4 route | grep "^192\.168\.$1\." > /dev/null 2>&1 ) && return 1
-    ( ip -4 route get 192.168.$1.0 | grep "\bvia\b" > /dev/null 2>&1 ) && \
-    ( ip -4 route get 192.168.$1.255 | grep "\bvia\b" > /dev/null 2>&1 )  && return 0
+    ( ip -4 route get 192.168.$1.0 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
+    ( ip -4 route get 192.168.$1.255 2>&1 | grep  -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
     return 1
 }
 is_ip6_range_available() {
     ( ip -6 address | grep -i "inet6 fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
     ( ip -6 route | grep -i "^fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
-    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:: | grep "\bvia\b" > /dev/null 2>&1 ) && \
-    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:ffff:ffff:ffff:ffff | grep "\bvia\b" > /dev/null 2>&1 )  && return 0
+    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:: 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
+    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:ffff:ffff:ffff:ffff 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
     return 1
 }
 
