@@ -150,7 +150,7 @@ name: profile5
 $ lxc profile add <container> profile5
 ```
 
-That should make one container have 2 profiles. `profile5` will override `eth0`.
+That should make one container have 2 profiles. `profile5` will override container's`eth0`.
 
 ```
 # lnxrouter -i lxdbr5 --tp 9040 --dns 9053
@@ -212,11 +212,14 @@ Options:
     -o <interface>          Specify an inteface to provide Internet from.
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
-    -n                      Do not provide Internet
+    -n                      Do not provide Internet (See Notice 1)
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
+    --no4                   Disable IPv4 Internet (not forwarding IPv4).
+                            Usually used with '-6'
+                            (See Notice 1)
     --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
                             
     --dns <ip>|<port>|<ip:port>
@@ -227,7 +230,7 @@ Options:
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
     --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
-                            that destination port is 53 to this host
+                            whose destination port is 53 to this host
     --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host)
@@ -285,6 +288,11 @@ Options:
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
+
+    Notice 1:   This script assume your host's default policy won't forward
+                packets, so the script won't explictly ban forwarding in any
+                mode. In some case may cause unwanted communication between 2
+                networks, which you should check if you want isolated network
 ```
 
 > These changes to system will not be restored by script's cleanup:

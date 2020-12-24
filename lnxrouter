@@ -25,11 +25,14 @@ Options:
     -o <interface>          Specify an inteface to provide Internet from.
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
-    -n                      Do not provide Internet
+    -n                      Do not provide Internet (See Notice 1)
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
+    --no4                   Disable IPv4 Internet (not forwarding IPv4).
+                            Usually used with '-6'
+                            (See Notice 1)
     --p6 <prefix>           Set IPv6 prefix (length 64) (example: fd00:1:2:3::)
                             
     --dns <ip>|<port>|<ip:port>
@@ -99,6 +102,11 @@ Options:
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
 
+    Notice 1:   This script assume your host's default policy won't forward
+                packets, so the script won't explictly ban forwarding in any
+                mode. In some case may cause unwanted communication between 2
+                networks, which you should check if you want isolated network
+                
 Examples:
     $PROGNAME -i eth1
     $PROGNAME --ap wlan0 MyAccessPoint
@@ -117,6 +125,7 @@ GATEWAY=
 PREFIX6=
 IID6=1
 IPV6=0
+NO4=0
 BANLAN=0
 DHCP_DNS=gateway
 DHCP_DNS6=gateway
@@ -186,10 +195,16 @@ while [[ -n "$1" ]]; do
             shift
             INTERNET_IFACE="$1"
             shift
+            echo ""
+            echo "Since you're using in this mode, make sure you've read Notice 1" >&2
+            echo ""
             ;;
         -n)
             shift
             SHARE_METHOD=none
+            echo ""
+            echo "Since you're using in this mode, make sure you've read Notice 1" >&2
+            echo ""
             ;;
         --ban-priv)
             shift
@@ -210,6 +225,13 @@ while [[ -n "$1" ]]; do
         -6)
             shift
             IPV6=1
+            ;;
+        --no4)
+            shift
+            NO4=1
+            echo ""
+            echo "Since you're using in this mode, make sure you've read Notice 1" >&2
+            echo ""
             ;;
         --p6)
             shift
@@ -725,9 +747,11 @@ start_nat() {
     fi
     echo
     echo "iptables: NAT "
-    iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
-    iptables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-    iptables_ -v -I FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    if [[ $NO4 -eq 0 ]]; then
+        iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
+        iptables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
+        iptables_ -v -I FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+    fi
     if [[ $IPV6 -eq 1 ]]; then
         ip6tables_ -v -t nat -I POSTROUTING -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE || die
         ip6tables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT || die
@@ -736,9 +760,11 @@ start_nat() {
 }
 stop_nat() {
     echo "iptables: stop NAT"
-    iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE
-    iptables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT
-    iptables_ -D FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT
+    if [[ $NO4 -eq 0 ]]; then
+        iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE
+        iptables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT
+        iptables_ -D FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT
+    fi
     if [[ $IPV6 -eq 1 ]]; then
         ip6tables_ -t nat -D POSTROUTING -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE
         ip6tables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT
@@ -871,25 +897,26 @@ stop_dhcp() {
 start_redsocks() {
     echo
     echo "iptables: transparent proxy non-LAN TCP/UDP traffic to port ${TP_PORT}"
-    iptables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 100.64.0.0/10  -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
-    iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 255.255.255.255 -j RETURN || die
-    
-    iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-    iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+    if [[ $NO4 -eq 0 ]]; then
+        iptables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 100.64.0.0/10  -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
+        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 255.255.255.255 -j RETURN || die
+        
+        iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j REDSOCKS-${SUBNET_IFACE} || die
+        iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j REDSOCKS-${SUBNET_IFACE} || die
 
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
-    
+        iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+    fi
     if [[ $IPV6 -eq 1 ]]; then
         ip6tables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
         ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d fc00::/7 -j RETURN || die
@@ -909,13 +936,14 @@ start_redsocks() {
 }
 stop_redsocks() {
     echo "iptables: stop transparent proxy"
-    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
-    iptables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
-    iptables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
-    
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
-    
+    if [[ $NO4 -eq 0 ]]; then
+        iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
+        iptables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
+        iptables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
+        
+        iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
+        iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
+    fi
     if [[ $IPV6 -eq 1 ]]; then
         ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64  -j REDSOCKS-${SUBNET_IFACE}
         ip6tables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
