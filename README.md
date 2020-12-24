@@ -312,7 +312,7 @@ Wifi hotspot:
 
 ## Donate
 
-[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md), or just give a star!
 
 ## Thanks
 

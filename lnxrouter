@@ -1453,9 +1453,14 @@ if [[ $NM_RUNNING -eq 1 ]] && nm_knows $TARGET_IFACE ; then
 fi
 
 if [[ $NO_DNSMASQ -eq 0 ]]; then
+    if grep "^nobody:" /etc/group >/dev/null 2>&1 ; then
+        NOBODY_GROUP="nobody"
+    else
+        NOBODY_GROUP="nogroup"
+    fi
     cat <<- EOF > $CONFDIR/dnsmasq.conf
 		user=nobody
-		group=nobody
+		group=$NOBODY_GROUP
 		bind-dynamic
 		listen-address=${GATEWAY}
 		interface=$SUBNET_IFACE
@@ -1464,11 +1469,11 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
 		dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
 		dhcp-option-force=option:router,${GATEWAY}
 		#log-dhcp
-		log-facility=/dev/null
+		log-facility=/dev/stdout
 		bogus-priv
 		domain-needed
 	EOF
-    # 'log-dhcp' show too much logs. Using '-d' in dnsmasq command shows a proper dhcp log
+    # 'log-dhcp'(Extra logging for DHCP) shows too much logs.
     # if use '-d', 'log-facility' should = /dev/null
     if [[ $SHARE_METHOD == "none" ]]; then    
         echo "no-resolv"  >> $CONFDIR/dnsmasq.conf
@@ -1635,16 +1640,18 @@ if [[ $NO_DNSMASQ -eq 0 ]]; then
 
     echo 
     echo "Starting dnsmasq"
-    # dnsmasq '-x' works only when no '-d' (run in foreground)
-    # Using '-d' dnsmasq will not turn into 'nobody'
-    dnsmasq -d -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases & 
-    DNSMASQ_PID=$!
-    echo "dnsmasq PID: $DNSMASQ_PID"
-    #while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
-    #    sleep 1
-    #done
+    # Using '-d'(no daemon) dnsmasq will not turn into 'nobody'
+    # '-x' works only when no '-d'
+    dnsmasq  -k -C $CONFDIR/dnsmasq.conf -x $CONFDIR/dnsmasq.pid -l $CONFDIR/dnsmasq.leases & 
+    #####DNSMASQ_PID=$!         # only when with '-d'
+    ######echo "dnsmasq PID: $DNSMASQ_PID"      # only when with '-d'
+    i=0; while [[ ! -f $CONFDIR/dnsmasq.pid ]]; do
+        sleep 1
+        i=$((i + 1))
+        if [[ $i -gt 10 ]]; then die "Couldn't get dnsmasq PID" ; fi
+    done
     echo -n "dnsmasq PID: " ; cat $CONFDIR/dnsmasq.pid
-    #(wait $DNSMASQ_PID ; die "dnsmasq failed") &
+    ######(wait $DNSMASQ_PID ; die "dnsmasq failed") &  # wait can't deal with non-child
     ( while [ -e /proc/$DNSMASQ_PID ]; do sleep 10; done ; die "dnsmasq exited" ) &
     sleep 2
 
