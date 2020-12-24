@@ -291,8 +291,9 @@ Options:
 
     Notice 1:   This script assume your host's default policy won't forward
                 packets, so the script won't explictly ban forwarding in any
-                mode. In some case may cause unwanted communication between 2
-                networks, which you should check if you want isolated network
+                mode. In some unexpected case may cause unwanted packets 
+                leakage between 2 networks, which you should be aware of if you
+                want isolated network
 ```
 
 > These changes to system will not be restored by script's cleanup:
@@ -323,7 +324,7 @@ Wifi hotspot:
 
 [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time!
 
-（ ^_^）o自自o（^_^ ）
+（ ^\_^）o自自o（^_^ ）
 
 No? Okay, or just give me a star!
 

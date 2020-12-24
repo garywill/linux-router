@@ -104,8 +104,9 @@ Options:
 
     Notice 1:   This script assume your host's default policy won't forward
                 packets, so the script won't explictly ban forwarding in any
-                mode. In some case may cause unwanted communication between 2
-                networks, which you should check if you want isolated network
+                mode. In some unexpected case may cause unwanted packets 
+                leakage between 2 networks, which you should be aware of if you
+                want isolated network
                 
 Examples:
     $PROGNAME -i eth1
@@ -1388,7 +1389,7 @@ trap "die" SIGUSR2
 
 mkdir -p $TMPDIR
 chmod 755 $TMPDIR 2>/dev/null
-cd $TMPDIR
+cd $TMPDIR || die "Couldn't change directory to linux-router's temporary path"
 
 CONFDIR=$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)
 chmod 755 $CONFDIR
@@ -1639,13 +1640,12 @@ fi
 #===========================
 
 # initialize subnet interface
-if [[  -n "$NEW_MACADDR" ]]; then
-    ip link set dev ${SUBNET_IFACE} address ${NEW_MACADDR} || die "Failed setting new MAC address"
-fi
-
 ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
 ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
+if [[  -n "$NEW_MACADDR" ]]; then
+    ip link set dev ${SUBNET_IFACE} address ${NEW_MACADDR} || die "Failed setting new MAC address"
+fi
 
 ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
 
