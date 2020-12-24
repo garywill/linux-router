@@ -11,6 +11,7 @@ umask $SCRIPT_UMASK
 usage() {
     cat << EOF
 linux-router $VERSION (https://github.com/garywill/linux-router)
+Released under LGPL, with no warranty. Use on your own risk.
 
 Usage: $PROGNAME <options>
 
@@ -25,6 +26,7 @@ Options:
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
     -n                      Do not provide Internet
+    --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
@@ -38,7 +40,7 @@ Options:
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
     --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
-                            that destination port is 53 to this host
+                            whose destination port is 53 to this host
     --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host)
@@ -115,7 +117,7 @@ GATEWAY=
 PREFIX6=
 IID6=1
 IPV6=0
-ROUTE_ADDRS=
+BANLAN=0
 DHCP_DNS=gateway
 DHCP_DNS6=gateway
 dnsmasq_NO_DNS=0
@@ -188,6 +190,10 @@ while [[ -n "$1" ]]; do
         -n)
             shift
             SHARE_METHOD=none
+            ;;
+        --ban-priv)
+            shift
+            BANLAN=1
             ;;
         --tp)
             shift
@@ -740,6 +746,72 @@ stop_nat() {
     fi
 }
 
+start_ban_lan() {
+    echo
+    echo "iptables: Disallow clients to access LAN"
+    iptables_ -N BANLAN-f-${SUBNET_IFACE}  || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 0.0.0.0/8 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 10.0.0.0/8 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 100.64.0.0/10 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 127.0.0.0/8 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 169.254.0.0/16 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 172.16.0.0/12 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 192.168.0.0/16 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 224.0.0.0/4 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 255.255.255.255 -j REJECT || die
+    
+    iptables_ -I FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} || die
+    
+    iptables_ -N BANLAN-i-${SUBNET_IFACE}
+    #iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} -j REJECT || die
+    iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die
+    
+    iptables_ -I INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE} || die
+    
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -N BANLAN-f-${SUBNET_IFACE}  || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d fc00::/7 -j REJECT || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d fe80::/10 -j REJECT || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ff00::/8 -j REJECT || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::1 -j REJECT || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::/128 -j REJECT || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::ffff:0:0/96 -j REJECT || die
+        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::ffff:0:0:0/96 -j REJECT || die
+
+        ip6tables_ -I FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} || die
+        
+        ip6tables_ -N BANLAN-i-${SUBNET_IFACE}  || die
+        #ip6tables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} -j REJECT || die
+        ip6tables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} ! -p icmpv6 -j REJECT || die
+
+        ip6tables_ -I INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE} || die
+    fi
+}
+stop_ban_lan() {
+    echo "iptables: Unban clients' LAN access"
+    
+    iptables_ -D FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} 
+    
+    iptables_ -F BANLAN-f-${SUBNET_IFACE}
+    iptables_ -X BANLAN-f-${SUBNET_IFACE}
+    
+    iptables_ -D INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE}
+    
+    iptables_ -F BANLAN-i-${SUBNET_IFACE}
+    iptables_ -X BANLAN-i-${SUBNET_IFACE}
+    if [[ $IPV6 -eq 1 ]]; then
+        ip6tables_ -D FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} 
+    
+        ip6tables_ -F BANLAN-f-${SUBNET_IFACE}
+        ip6tables_ -X BANLAN-f-${SUBNET_IFACE} 
+        
+        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE}
+        
+        ip6tables_ -F BANLAN-i-${SUBNET_IFACE}
+        ip6tables_ -X BANLAN-i-${SUBNET_IFACE} 
+    fi
+}
+
 allow_dns_port() {
     echo
     echo "iptables: allow DNS port access"
@@ -926,6 +998,8 @@ clean_iptables() {
     if [[ $NO_DNSMASQ -eq 0 ]]; then
         stop_dhcp
     fi
+    
+    [[ "$BANLAN" -eq 1 ]] && stop_ban_lan
 }
 
 cleanup() {
@@ -1598,12 +1672,16 @@ else
     echo 1 > /proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6
 fi
 
+
+
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
     echo "No Internet sharing"
+    [[ "$BANLAN" -eq 1 ]] && start_ban_lan
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
     [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS, queries may leak to other interfaces!!!\n" >&2
     start_nat
+    [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     echo 1 > /proc/sys/net/ipv4/ip_forward || die "Failed enabling system ipv4 forwarding"
     if [[ $IPV6 -eq 1 ]]; then
         echo 1 > /proc/sys/net/ipv6/conf/all/forwarding || die "Failed enabling system ipv6 forwarding"
@@ -1617,6 +1695,7 @@ elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
     fi
     [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using transparent proxy but this host is providing local DNS, this may cause privacy leak !!!\n" >&2
 
+    [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     start_redsocks
 fi
 

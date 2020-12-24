@@ -194,7 +194,7 @@ Create a bridge
 
 ```
 # lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
-$ firejail --net=firejail5 --dns=192.168.55.1
+$ firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd
 ```
 
 ### CLI usage and other features
@@ -213,6 +213,7 @@ Options:
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
     -n                      Do not provide Internet
+    --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 Set this host's IPv4 address, netmask is 24 
     -6                      Enable IPv6 (NAT)
@@ -307,7 +308,6 @@ Wifi hotspot:
 
 ## TODO
 
-- Option to ban private network access
 - Option to randomize MAC
 
 ## Donate
