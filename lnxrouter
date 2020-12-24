@@ -58,6 +58,7 @@ Options:
                             hosts file
     
     --mac <MAC>             Set MAC address
+    --random-mac            Use random MAC address
  
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP traffic to port.
@@ -66,7 +67,8 @@ Options:
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
-    --password <password>   Wifi password
+    -p, --password <password>   
+                            Wifi password
     
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -111,8 +113,8 @@ Options:
 Examples:
     $PROGNAME -i eth1
     $PROGNAME --ap wlan0 MyAccessPoint
-    $PROGNAME --ap wlan0 MyAccessPoint --password MyPassPhrase
-    $PROGNAME -n --ap wlan0 MyAccessPoint --password MyPassPhrase
+    $PROGNAME --ap wlan0 MyAccessPoint -p MyPassPhrase
+    $PROGNAME -n --ap wlan0 MyAccessPoint -p MyPassPhrase
     $PROGNAME -i eth1 --tp <transparent-proxy> --dns <dns-proxy>
 EOF
 }
@@ -145,6 +147,7 @@ SHARE_METHOD=nat
 TP_PORT=
 DNS=
 
+USE_RANDOM_MAC=0
 NEW_MACADDR=
 OLD_MACADDR=
 DAEMONIZE=0
@@ -244,6 +247,10 @@ while [[ -n "$1" ]]; do
             NEW_MACADDR="$1"
             shift
             ;;
+        --random-mac)
+            shift
+            USE_RANDOM_MAC=1
+            ;;
             
         --dns)
             shift
@@ -303,7 +310,7 @@ while [[ -n "$1" ]]; do
             SSID="$1"
             shift
             ;;
-        --password)
+        -p|--password)
             shift
             PASSPHRASE="$1"
             shift
@@ -621,6 +628,26 @@ get_new_macaddr() {
     done
     echo $NEWMAC
 }
+
+generate_random_mac() {
+    local r1 r2 r3 r4 r5 r6 
+    while :; do
+        r1=$( printf "%02x" $(($RANDOM%256/4*4)) )
+        r2=$( printf "%02x" $(($RANDOM%256)) )
+        r3=$( printf "%02x" $(($RANDOM%256)) )
+        r4=$( printf "%02x" $(($RANDOM%256)) )
+        r5=$( printf "%02x" $(($RANDOM%256)) )
+        r6=$( printf "%02x" $(($RANDOM%256)) )
+        RAND_MAC="$r1:$r2:$r3:$r4:$r5:$r6"
+        ( ! ip link | grep "link" | grep $RAND_MAC > /dev/null 2>&1 ) && \
+        ( ! ip maddress | grep "link" | grep $RAND_MAC > /dev/null 2>&1 ) && \
+        ( ! ip neigh | grep "lladdr $RAND_MAC" > /dev/null 2>&1 ) && \
+        ( ! get_all_macaddrs | grep $RAND_MAC ) && \
+        break
+    done
+    NEW_MACADDR=$RAND_MAC
+}
+
 
 is_ip4_range_available() {
     ( ip -4 address | grep "inet 192\.168\.$1\." > /dev/null 2>&1 ) && return 1
@@ -1331,6 +1358,8 @@ if [[ $WIFI_IFACE ]]; then
 
 fi
 
+[[ "$USE_RANDOM_MAC" -eq 1 ]] && generate_random_mac 
+
 if [[ -n "$NEW_MACADDR" ]]; then
     if ! is_unicast_macaddr "$NEW_MACADDR"; then
         echo "ERROR: The first byte of MAC address (${NEW_MACADDR}) must be even" >&2
@@ -1359,6 +1388,7 @@ else
 fi
 echo "Target interface is ${TARGET_IFACE}"
 
+[[ "$USE_RANDOM_MAC" -eq 1 ]] && echo "Use random MAC address $NEW_MACADDR"
 
 if [[ ! -n $GATEWAY ]]; then
     generate_random_ip4

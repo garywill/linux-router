@@ -245,6 +245,7 @@ Options:
                             hosts file
     
     --mac <MAC>             Set MAC address
+    --random-mac            Use random MAC address
  
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP traffic to port.
@@ -253,7 +254,8 @@ Options:
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
-    --password <password>   Wifi password
+    -p, --password <password>   
+                            Wifi password
     
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -307,17 +309,14 @@ Options:
 - iproute2
 - dnsmasq
 - iptables
-
-Wifi hotspot:
-
-- hostapd
-- iw
-- iwconfig (you only need this if 'iw' can not recognize your adapter)
-- haveged (optional)
+- WiFi hotspot dependencies
+   - hostapd
+   - iw
+   - iwconfig (you only need this if 'iw' can not recognize your adapter)
+   - haveged (optional)
 
 ## TODO
 
-- Option to randomize MAC
 - Explictly ban forwarding if not needed
 
 ## Donate
