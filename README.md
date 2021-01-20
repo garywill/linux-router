@@ -355,6 +355,8 @@ Options:
 
 No? Okay, or just give me a star!
 
-## Thanks
+## For developers
 
-Many thanks to project [create_ap](https://github.com/oblique/create_ap).
+**Many thanks to project [create_ap](https://github.com/oblique/create_ap)**.
+
+This script was forked from create\_ap. Now it's quite different from it. (See `history` branch for how I modified create_ap)
