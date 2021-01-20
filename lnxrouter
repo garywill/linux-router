@@ -101,7 +101,9 @@ Options:
   Instance managing:
     --daemon                Run in background
     --list-running          Show running instances
-    --list-clients <id>     List clients of an instance
+    --lc, --list-clients <id>     
+                            List clients of an instance. Or list neighbors of
+                            any interface, even if it isn't handled by us
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
@@ -442,7 +444,7 @@ parse_user_options(){
                 shift
                 LIST_RUNNING=1
                 ;;
-            --list-clients)
+            --lc|--list-clients)
                 shift
                 LIST_CLIENTS_ID="$1"
                 shift
@@ -1255,79 +1257,114 @@ get_confdir_from_pid() {
     done
 }
 
-print_client_by_mac() {
-    local line ipaddr hostname
-    local mac="$1"
+#======================================================
 
-    if [[ -f "$CONFDIR/dnsmasq.leases" ]]; then
-        line=$(grep " $mac " "$CONFDIR/dnsmasq.leases" | tail -n 1)
-        ipaddr=$(echo "$line" | cut -d' ' -f3)
-        hostname=$(echo "$line" | cut -d' ' -f4)
-    fi
+print_clients_from_leases() {  # MAC|IP|HOST|lease
+    local LEASE_FILE="$1"
+    local FILEC
+    local line
+    local LEASEstr LEASEstamp
+    
+    FILEC="$(cat "$LEASE_FILE" | grep -v -E "^duid\b" | sed -r '/^\s*$/d' )"
 
-    [[ -z "$ipaddr" ]] && ipaddr="*"
-    [[ -z "$hostname" ]] && hostname="*"
-
-    printf "%-20s %-18s %s\n" "$mac" "$ipaddr" "$hostname"
-}
-
-print_clients_in_leases() {
-    local line ipaddr hostname
-    local mac
-
-    if [[ -f "$CONFDIR/dnsmasq.leases" ]]; then
-        while read line
-        do
-            mac=$(echo "$line" | cut -d' ' -f2)
-            ipaddr=$(echo "$line" | cut -d' ' -f3)
-            hostname=$(echo "$line" | cut -d' ' -f4)
+    echo "$FILEC" | while read line
+    do
+        #echo aa$line
+        LEASEstamp="$(echo "$line" | awk '{print $1}')"
+        MAC="$(echo "$line" | awk '{print $2}')"
+        IP="$(echo "$line" | awk '{print $3}'  | sed 's/\[//g' | sed 's/\]//g')"
+        HOST="$(echo "$line" | awk '{print $4}' | sed 's/*/?/g')"
+        
+        if [[ -n "$MAC" ]]; then
+            LEASEstr="$(date -d @${LEASEstamp} +%m-%d_%X)"
             
-            printf "%-20s %-18s %s\n" "MAC" "IP" "Hostname"
-            printf "%-20s %-18s %s\n" "$mac" "$ipaddr" "$hostname"
-        done < "$CONFDIR/dnsmasq.leases"
-    fi
+            echo "$MAC|$IP|$HOST|$LEASEstr"
+        fi
+    done
+    
+}
+print_interface_neighbors_via_iproute() {  # MAC|IP|_|STATUS 
+    local IFACE=$1
+    
+    local line
+    
+    ip n | grep -E "\bdev $IFACE\b" | sed 's/ /|/g' | while read line
+    do
+        local MAC IP STATUS
+        
+        IP="$(echo $line | awk -F'|' '{print $1}')"
+        
+        if [[ "$(echo $line | awk -F'|' '{print $4}')" == "lladdr" ]]; then # has mac
+            # if has mac, $4="lladdr" and $5=macaddress and $6+=status
+            MAC="$(echo $line | awk -F'|' '{print $5}')"
+            STATUS="$(echo $line | awk -F'|' '$1="";$2="";$3="";$4="";$5="";{print}' | awk '{$1=$1;print}'| sed 's/ /,/g')"
+        else # no mac 
+            # if no mac, $4="" and $5+=status
+            MAC="?"
+            STATUS="$(echo $line | awk -F'|' '$1="";$2="";$3="";$4="";{print}' | awk '{$1=$1;print}' | sed 's/ /,/g')"
+        fi
+        if [[ -n "$IP" ]]; then
+            echo "$MAC|$IP|?|$STATUS"
+        fi
+    done
+}
+print_interface_neighbors_via_iw() {  # MAC|_|_|signal  
+    local IFACE=$1
+    local MAC SIGNAL
+    iw dev $IFACE station dump | awk '($1 ~ /Station$/) {print $2}' | while read MAC
+    do
+        if [[ -n "$MAC" ]]; then
+            SIGNAL="$(iw dev $IFACE station get $MAC | grep "signal:" | awk '{print $2}')"
+            echo "${MAC}|?|?|${SIGNAL} dBm"
+        fi
+    done
 }
 
 list_clients() {
-    local subn_iface pid
-
-    # If PID is given, get the associated wifi iface
+    local IFACE pid
+    local CONFDIR
+    
+    local output=""
+    # If number (PID) is given, get the associated wifi iface
     if [[ "$1" =~ ^[1-9][0-9]*$ ]]; then
         pid="$1"
-        subn_iface=$(get_subn_iface_from_pid "$pid")
-        [[ -z "$subn_iface" ]] && die "'$pid' is not the pid of a running $PROGNAME instance."
-    fi
-
-    [[ -z "$subn_iface" ]] && subn_iface="$1"
-
-    [[ -z "$pid" ]] && pid=$(get_pid_from_subn_iface "$subn_iface")
-    [[ -z "$pid" ]] && die "'$subn_iface' is not used from $PROGNAME instance.\n\
-       Maybe you need to pass the virtual interface instead.\n\
-       Use --list-running to find it out."
-    [[ -z "$CONFDIR" ]] && CONFDIR=$(get_confdir_from_pid "$pid")
-    # instance check finished
-    
-    ##################################################
-    # TODO :  not compatitable with ipv6 enabled. dns lease and iw is not enough .  use 'ip n', so compatitable with any interface
-    if [[ -f "$CONFDIR/hostapd.conf"  && $USE_IWCONFIG -eq 0 ]]; then
-        local awk_cmd='($1 ~ /Station$/) {print $2}'
-        local client_list=$(iw dev "$subn_iface" station dump | awk "$awk_cmd")
-
-        if [[ -z "$client_list" ]]; then
-            echo "No clients connected"
-            return
+        IFACE=$(get_subn_iface_from_pid "$pid")
+        if [[ -z "$IFACE" ]] ; then
+            echo "'$pid' is not the pid of a running $PROGNAME instance." >&2 
+            exit 1
         fi
+    else # non-number given
+        IFACE="$1"
+        if ( ! is_interface $IFACE ) ; then
+            echo "'$IFACE' is not an interface" >&2
+            exit 1
+        fi
+        pid=$(get_pid_from_subn_iface "$IFACE")
+        if [[ -n "$pid" ]] ; then  # if this interface is hosted by us
+            CONFDIR=$(get_confdir_from_pid "$pid")
+            output="$(print_clients_from_leases "$CONFDIR/dnsmasq.leases" )"
+        else    # this interface NOT hosted by us
+            echo "Tip: '$IFACE' is not an interface hosted by $PROGNAME" >&2
+        fi
+    fi
+    output="$(echo "$output" ; print_interface_neighbors_via_iw $IFACE) "
+    output="$(echo "$output" ; print_interface_neighbors_via_iproute $IFACE)"
+    
+    output="$(echo "$output" | sort -k 1 -k 2 -t '|' | uniq | sed -r '/^\s*$/d')"
 
-        printf "%-20s %-18s %s\n" "MAC" "IP" "Hostname"
-
-        local mac
-        for mac in $client_list; do
-            print_client_by_mac $mac
-        done
-    else
-        echo "Listing clients via DNS lease file. non-DHCPed clients won't be showed"
-        print_clients_in_leases
-    fi 
+    echo "$IFACE ($(get_interface_mac $IFACE)) neighbors:"
+    
+    local fmt="%-19s%-41s%-20s%s" # string length: MAC 17, ipv4 15, ipv6 39, hostname ?
+    printf "$fmt\n"  "MAC" "IP" "HOSTNAME" "INFO"
+    
+    local line
+    echo "$output"| while read line
+    do
+        if [[ -n "$line" ]]; then
+            echo "$line" | awk -F'|' "{printf \"$fmt\n\",\$1,\$2,\$3,\$4}"
+        fi
+    done
+    # TODO : merge same mac and same ip line
 }
 
 has_running_instance() {

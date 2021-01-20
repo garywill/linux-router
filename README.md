@@ -2,7 +2,7 @@
 
 Set Linux as router in one command. Able to Provide Internet, or create Wifi hotspot. Support transparent proxy (redsocks). Also useful for routing VM/containers.
 
-It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c`.
+It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
 [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) :)
 
@@ -304,7 +304,9 @@ Options:
   Instance managing:
     --daemon                Run in background
     --list-running          Show running instances
-    --list-clients <id>     List clients of an instance
+    --lc, --list-clients <id>     
+                            List clients of an instance. Or list neighbors of
+                            any interface, even if it isn't handled by us
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
@@ -342,7 +344,6 @@ Options:
 
 - WPA3
 - Global IPv6
-- Refactor clients(neighbors) listing function
 - Explictly ban forwarding if not needed
 - Bring bridging method back
 
