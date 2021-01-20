@@ -1516,16 +1516,7 @@ decide_subnet_interface() {
     fi
 }
 
-write_hostapd_conf() {
-    if [[ -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
-        iw reg set "$COUNTRY"
-    fi
-
-    can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
-
-    # TODO: move above code
-        
-    # hostapd config
+write_hostapd_conf() {  
     cat <<- EOF > "$CONFDIR/hostapd.conf"
 		beacon_int=100
 		ssid=${SSID}
@@ -1815,6 +1806,14 @@ mkdir -p "$COMMON_CONFDIR"
 decide_subnet_interface
 
 echo "$SUBNET_IFACE" > "$CONFDIR/subn_iface"
+
+if [[ $WIFI_IFACE && -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
+    iw reg set "$COUNTRY" || die "Failed setting country code"
+fi
+
+if [[ $WIFI_IFACE ]] ; then
+    can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
+fi
 
 [[ $WIFI_IFACE ]] && write_hostapd_conf
 #===================================================
