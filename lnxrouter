@@ -236,6 +236,7 @@ parse_user_options(){
             --tp)
                 shift
                 TP_PORT="$1"
+                SHARE_METHOD=redsocks
                 shift
                 ;;
                 
@@ -1776,8 +1777,7 @@ decide_target_interface
 
 decide_ip_addresses
 
-# TODO: should this be some other place?
-[[ $TP_PORT ]] && SHARE_METHOD=redsocks
+
 
 # if user choose to make DHCP to tell clients to use other DNS, we don't have to serve DNS
 [[ $DHCP_DNS != 'gateway' && $DHCP_DNS6 != 'gateway' ]] && dnsmasq_NO_DNS=1
