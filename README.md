@@ -69,7 +69,7 @@ sudo lnxrouter -i eth1
 ### Provide an interface's Internet to another interface
 
 ```
-sudo lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1
+sudo lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1 -6 --dhcp-dns6 [2606:4700:4700::1111]
 ```
 > Read _Notice 1_
 
@@ -194,7 +194,7 @@ lxc config device remove <container> eth0
 
 ### Use as transparent proxy for VirtualBox
 
-On VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
+In VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
 
 ```
 sudo lnxrouter -i vboxnet5 --tp 9040 --dns 9053
@@ -231,7 +231,7 @@ Options:
     -n                      Do not provide Internet (See Notice 1)
     --ban-priv              Disallow clients to access my private network
     
-    -g <ip>                 Set this host's IPv4 address, netmask is 24 
+    -g <ip>                 This host's IPv4 address in subnet (mask is /24)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
@@ -266,7 +266,7 @@ Options:
  
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP traffic to port.
-                            Usually used with '--dns'
+                            (usually used with '--dns')
     
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
@@ -344,6 +344,7 @@ Options:
 - Global IPv6
 - Refactor clients(neighbors) listing function
 - Explictly ban forwarding if not needed
+- Bring bridging method back
 
 ## Donate
 

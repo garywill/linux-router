@@ -28,7 +28,7 @@ Options:
     -n                      Do not provide Internet (See Notice 1)
     --ban-priv              Disallow clients to access my private network
     
-    -g <ip>                 Set this host's IPv4 address, netmask is 24 
+    -g <ip>                 This host's IPv4 address in subnet (mask is /24)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
@@ -63,7 +63,7 @@ Options:
  
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP traffic to port.
-                            Usually used with '--dns'
+                            (usually used with '--dns')
     
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
@@ -129,9 +129,8 @@ check_empty_option(){
 }
 
 
-
 define_global_variables(){
-    #======== Global variables for user options =====
+    # user options
     GATEWAY=  # IPv4 address for this host
     PREFIX6=  # IPv6 LAN address prefix for this host
     IID6=1    # IPv6 LAN ID for this host
@@ -146,26 +145,25 @@ define_global_variables(){
     SHOW_DNS_QUERY=0  # log dns
     ETC_HOSTS=0
     ADDN_HOSTS=
-
-    SUBNET_IFACE=  # which interface to create network
     CONN_IFACE=    # which interface user choose to use to create network
     INTERNET_IFACE= # which interface to get Internet from
     THISHOSTNAME=   # this host's name the DNS tells clients 
-
-    SHARE_METHOD=nat 
     TP_PORT=  # transparent proxy port
     DNS=  # upstream DNS
-
     MAC_USE_RANDOM=0
     NEW_MACADDR=
-    OLD_MACADDR=
     DAEMONIZE=0
+    
+    # script variables
+    SUBNET_IFACE=  # which interface to create network
+    SHARE_METHOD=nat 
+    OLD_MACADDR=
+    
 
-    # wifi hotspot
+    ##### wifi hotspot
+    # user options
     HIDDEN=0 # hidden wifi hotspot
     WIFI_IFACE=
-    VWIFI_IFACE=
-    AP_IFACE=
     CHANNEL=default 
     WPA_VERSION=2
     MAC_FILTER=0
@@ -182,10 +180,16 @@ define_global_variables(){
     HOSTAPD_DEBUG_ARGS=
     USE_PSK=0
     ISOLATE_CLIENTS=0
-    USE_IWCONFIG=0  # automatically decided
     QR=0 # show wifi qr
-
-    #-- to deal with a running instance
+    
+    # script variables
+    VWIFI_IFACE=  # virtual wifi interface name, if created
+    AP_IFACE=     # can be VWIFI_IFACE or WIFI_IFACE
+    USE_IWCONFIG=0  # some device can't use iw
+    
+    #######
+    
+    #-- to deal with info of a running instance. then will exit
     LIST_RUNNING=0
     STOP_ID=
     LIST_CLIENTS_ID=
@@ -195,8 +199,6 @@ define_global_variables(){
     NM_RUNNING=0
     NM_UNM_LIST=  # it's called "list" but for now one interface
 }
-
-
 
 parse_user_options(){
     while [[ -n "$1" ]]; do
@@ -368,8 +370,6 @@ parse_user_options(){
                 shift
                 ;;
 
-
-
             --ieee80211n)
                 shift
                 IEEE80211N=1
@@ -448,8 +448,6 @@ parse_user_options(){
                 shift
                 ;;
 
-
-
             *)
                 echo  "Invalid parameter: $1" 1>&2
                 exit 1
@@ -461,6 +459,13 @@ parse_user_options(){
 
 # seperate ip and port
 sep_ip_port() {
+    # usage: sep_ip_port <ip:port> <var for ip> <var for port>
+    # input <ip:port> can be:
+    #   port (ip is 127.0.0.1)
+    #   ipv4
+    #   [ipv6]
+    #   ipv4:port
+    #   [ipv6]:port
     local IP
     local PORT
     local INPUT
@@ -492,12 +497,13 @@ sep_ip_port() {
     printf -v "$3" %s "$PORT"
 }
 
+#=========================
 is_interface() {
     [[ -z "$1" ]] && return 1
     [[ -d "/sys/class/net/${1}" ]]
 }
 
-get_phy_device() { # only for wifi interface
+get_interface_phy_device() { # only for wifi interface
     local x
     for x in /sys/class/ieee80211/*; do
         [[ ! -e "$x" ]] && continue
@@ -517,10 +523,10 @@ get_phy_device() { # only for wifi interface
 }
 
 get_adapter_info() { # only for wifi interface
-    #local PHY
-    PHY=$(get_phy_device "$1")
+    local iPHY
+    iPHY=$(get_interface_phy_device "$1")
     [[ $? -ne 0 ]] && return 1
-    iw phy $PHY info
+    iw phy $iPHY info
 }
 
 get_adapter_kernel_module() {
@@ -596,7 +602,7 @@ is_5ghz_frequency() {
     [[ $1 =~ ^(49[0-9]{2})|(5[0-9]{3})$ ]]
 }
 
-is_wifi_connected() {
+is_interface_wifi_connected() {
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         iw dev "$1" link 2>&1 | grep -E '^Connected to' > /dev/null 2>&1 && return 0
     else
@@ -613,7 +619,7 @@ is_unicast_macaddr() {
     [[ $(expr $x % 2) -eq 0 ]]
 }
 
-get_macaddr() {
+get_interface_mac() {
     is_interface "$1" || return
     cat "/sys/class/net/${1}/address"
 }
@@ -639,25 +645,26 @@ dealloc_vface_name() {
 
 #======
 
-get_all_macaddrs() {
+get_all_mac_in_system() {
     cat /sys/class/net/*/address
 }
 
 get_new_macaddr_according_to_existing() {
     local REALDEV OLDMAC NEWMAC LAST_BYTE i
     REALDEV=$1
-    OLDMAC=$(get_macaddr "$REALDEV")
+    OLDMAC=$(get_interface_mac "$REALDEV")
     NEWMAC=""
     LAST_BYTE=$(printf %d 0x${OLDMAC##*:})
     for i in {10..240}; do
         NEWMAC="${OLDMAC%:*}:$(printf %02x $(( ($LAST_BYTE + $i) % 256 )))"
-        (get_all_macaddrs | grep "$NEWMAC" > /dev/null 2>&1) || break
+        (get_all_mac_in_system | grep "$NEWMAC" > /dev/null 2>&1) || break
     done
     echo "$NEWMAC"
 }
 
 generate_random_mac() {
     local r1 r2 r3 r4 r5 r6 
+    local RAND_MAC
     while :; do
         r1=$( printf "%02x" $(($RANDOM%256/4*4)) )
         r2=$( printf "%02x" $(($RANDOM%256)) )
@@ -669,21 +676,21 @@ generate_random_mac() {
         ( ! ip link | grep "link" | grep $RAND_MAC > /dev/null 2>&1 ) && \
         ( ! ip maddress | grep "link" | grep $RAND_MAC > /dev/null 2>&1 ) && \
         ( ! ip neigh | grep "lladdr $RAND_MAC" > /dev/null 2>&1 ) && \
-        ( ! get_all_macaddrs | grep $RAND_MAC ) && \
+        ( ! get_all_mac_in_system | grep $RAND_MAC ) && \
         break
     done
-    NEW_MACADDR=$RAND_MAC
+    echo "$RAND_MAC"
 }
 
 
-is_ip4_range_available() {
+is_ip4_lan_range_available() { # checks 192.168.x.x
     ( ip -4 address | grep "inet 192\.168\.$1\." > /dev/null 2>&1 ) && return 1
     ( ip -4 route | grep "^192\.168\.$1\." > /dev/null 2>&1 ) && return 1
     ( ip -4 route get 192.168.$1.0 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
     ( ip -4 route get 192.168.$1.255 2>&1 | grep  -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
     return 1
 }
-is_ip6_range_available() {
+is_ip6_lan_range_available() {  # checks fdxx::
     ( ip -6 address | grep -i "inet6 fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
     ( ip -6 route | grep -i "^fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
     ( ip -6 route get fd$1:$2$3:$4$5:$6$7:: 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
@@ -695,11 +702,11 @@ generate_random_ip4() {
     local random_ip4
     while :; do
         random_ip4=$(($RANDOM%256))
-        is_ip4_range_available $random_ip4 && break
+        is_ip4_lan_range_available $random_ip4 && break
     done
-    GATEWAY="192.168.$random_ip4.1"
+    echo "192.168.$random_ip4.1"
 }
-generate_random_ip6() {
+generate_random_lan_ip6_prefix() {
     local r1 r2 r3 r4 r5 r6 r7
     while :; do
         r1=$( printf "%x" $(($RANDOM%240+16)) )
@@ -709,9 +716,9 @@ generate_random_ip6() {
         r5=$( printf "%x" $(($RANDOM%240+16)) )
         r6=$( printf "%x" $(($RANDOM%240+16)) )
         r7=$( printf "%x" $(($RANDOM%240+16)) )
-        is_ip6_range_available $r1 $r2 $r3 $r4 $r5 $r6 $r7 && break
+        is_ip6_lan_range_available $r1 $r2 $r3 $r4 $r5 $r6 $r7 && break
     done
-    PREFIX6="fd$r1:$r2$r3:$r4$r5:$r6$r7::"
+    echo "fd$r1:$r2$r3:$r4$r5:$r6$r7::"
 }
 
 
@@ -740,12 +747,13 @@ haveged_watchdog() {
 
 
 # only support NetworkManager >= 0.9.9
-nm_initcheck() {
+is_nm_running() {
     if (which nmcli >/dev/null 2>&1 ) && (nmcli -t -f RUNNING g 2>&1 | grep -E '^running$' >/dev/null 2>&1 ) ; then
-        NM_RUNNING=1
+        echo 1
+    else
+        echo 0
     fi
 }
-
 
 nm_knows() {
     (nmcli dev show $1 | grep -E "^GENERAL.STATE:" >/dev/null 2>&1 ) && return 0 # nm sees
@@ -896,7 +904,7 @@ stop_ban_lan() {
 
 allow_dns_port() {
     echo
-    echo "iptables: allow DNS port access"
+    echo "iptables: allow DNS"
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
     if [[ $IPV6 -eq 1 ]]; then
@@ -905,7 +913,7 @@ allow_dns_port() {
     fi
 }
 unallow_dns_port() {
-    echo "iptables: stop allowing DNS"
+    echo "iptables: unallow DNS"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
     iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
     if [[ $IPV6 -eq 1 ]]; then
@@ -936,14 +944,14 @@ stop_catch_dns() {
 
 allow_dhcp() {
     echo 
-    echo "iptables: allow DHCP port access"
+    echo "iptables: allow dhcp"
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
     if [[ $IPV6 -eq 1 ]]; then
         ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT || die
     fi
 }
 unallow_dhcp() {
-    echo "iptables: stop dhcp"
+    echo "iptables: unallow dhcp"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
     if [[ $IPV6 -eq 1 ]]; then
         ip6tables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT
@@ -1010,15 +1018,20 @@ stop_redsocks() {
     fi
 }
 #---------------------------------------
-backup_interface_ipv6_bits() {
+backup_ipv6_bits() {
     mkdir "$CONFDIR/sys_6_conf_iface" || die "Failed making dir to save interface IPv6 status"
     cp  "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6" \
         "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"     \
         "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr"  \
         "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode" \
             "$CONFDIR/sys_6_conf_iface/" || die "Failed backking up interface ipv6 bits"
+            
+    if [[ "$SHARE_METHOD" == 'redsocks' ]] ; then
+        cp "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding" \
+            "$CONFDIR/sys_6_conf_iface/" || die "Failed backking up interface ipv6 bits"
+    fi
 }
-set_interface_ipv6_bits() {
+set_ipv6_bits() {
     if [[ $IPV6 -eq 1 ]]; then
         echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6"
         echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"
@@ -1028,11 +1041,12 @@ set_interface_ipv6_bits() {
         echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6"
     fi
 }
-restore_interface_ipv6_bit() {
+restore_ipv6_bits() {
     if [[ -d "$CONFDIR/sys_6_conf_iface" ]]; then
         cp -f "$CONFDIR/sys_6_conf_iface/*" "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/"
     fi
 }
+
 set_interface_mac() {
     local INTERFACE
     local MAC
@@ -1042,9 +1056,44 @@ set_interface_mac() {
     
     ip link set dev ${INTERFACE} address ${MAC} 
 }
+
+backup_interface_status() {
+    # virtual wifi interface will be destroyed, so no need to save status
+    
+    # backup interface up or down status
+    (ip link show ${SUBNET_IFACE} |grep -q "state UP") && SUBNET_IFACE_ORIGINAL_UP_STATUS=1
+    
+    # save interface old mac 
+    if [[ -n "$NEW_MACADDR" ]]; then 
+        OLD_MACADDR=$(get_interface_mac $SUBNET_IFACE)
+        echo "Saved ${SUBNET_IFACE} old MAC address ${OLD_MACADDR} into RAM"
+    fi
+    
+    backup_ipv6_bits
+    
+    # TODO : backup ip and others
+    
+    # nm managing status is saved when nm_set_unmanaged()
+}
+restore_interface_status() {
+    # virtual wifi interface will be destroyed, so no need to restore status
+    # don't use [[ $VWIFI_IFACE ]] to judge, if creating virtual wifi failed, VWIFI_IFACE is empty
+    [[ "$WIFI_IFACE" && "$NO_VIRT" -eq 0 ]] && return
+    
+    restore_ipv6_bits
+
+    if [[ -n "$OLD_MACADDR" ]] ; then
+        echo "Restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR} ..."
+        set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} && echo "Successfully restored ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}"
+    fi
+    
+    nm_restore_manage
+    
+    [[ $SUBNET_IFACE_ORIGINAL_UP_STATUS -eq 1 ]] && ip link set up dev ${SUBNET_IFACE} && echo "Restore ${SUBNET_IFACE} to link up"
+}
 #---------------------------------------
 
-kill_processes() {
+kill_processes() { # for this instance
     #echo "Killing processes"
     local x  pid
     for x in $CONFDIR/*.pid; do
@@ -1072,17 +1121,9 @@ _cleanup() {
     if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev ${VWIFI_IFACE} del
         dealloc_vface_name $VWIFI_IFACE
-    else # the subnet interface will not be removed, so need to restore settings about it
-        restore_interface_ipv6_bit
-        
-        if [[ -n "$NEW_MACADDR" ]] ; then
-            echo "Restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR} ..."
-            set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} && echo "Successfully restored ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}"
-        fi
-        
-        nm_restore_manage
     fi
     
+    restore_interface_status
     
     if ! has_running_instance; then
         echo "Exiting: This is the only running instance"
@@ -1149,6 +1190,25 @@ clean_exit() { # SIGUSR1
     # send clean_exit signal to the main process
     [[ $BASHPID -ne $$ ]] && kill -USR1 $$ || cleanup
     exit 0
+}
+
+init_trap(){
+    trap "cleanup" EXIT
+    trap "clean_exit" SIGINT SIGUSR1 SIGTERM
+    trap "die" SIGUSR2
+}
+init_conf_dirs() {
+    mkdir -p "$TMPDIR" || die "Couldn't make linux-router's temporary dir"
+    chmod 755 "$TMPDIR" 2>/dev/null
+    cd "$TMPDIR" || die "Couldn't change directory to linux-router's temporary path"
+
+    CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)" || die "Instance couldn't make config dir" # config dir for one instance
+    chmod 755 "$CONFDIR"
+    #echo "Config dir: $CONFDIR"
+    echo $$ > "$CONFDIR/pid"
+
+    COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf" # config dir for all instances
+    mkdir -p "$COMMON_CONFDIR"
 }
 
 #== functions to deal with running instances
@@ -1245,7 +1305,10 @@ list_clients() {
        Maybe you need to pass the virtual interface instead.\n\
        Use --list-running to find it out."
     [[ -z "$CONFDIR" ]] && CONFDIR=$(get_confdir_from_pid "$pid")
-
+    # instance check finished
+    
+    ##################################################
+    # TODO :  not compatitable with ipv6 enabled. dns lease and iw is not enough .  use 'ip n', so compatitable with any interface
     if [[ -f "$CONFDIR/hostapd.conf"  && $USE_IWCONFIG -eq 0 ]]; then
         local awk_cmd='($1 ~ /Station$/) {print $2}'
         local client_list=$(iw dev "$subn_iface" station dump | awk "$awk_cmd")
@@ -1306,7 +1369,8 @@ send_stop() {
 ## ========================================================
 # decide linux-router's global temporary path for all instances
 # this is different and should be before config-saving dir. The latter is for one instance
-init_tmpdir(){
+decide_tmpdir(){
+    local TMPD
     if [[ -d /dev/shm ]]; then
         TMPD=/dev/shm
     elif [[ -d /run/shm ]]; then
@@ -1314,7 +1378,8 @@ init_tmpdir(){
     else
         TMPD=/tmp
     fi
-    TMPDIR=$TMPD/lnxrouter_tmp
+    #TMPDIR=$TMPD/lnxrouter_tmp
+    echo "$TMPD/lnxrouter_tmp"
 }
 
 #======
@@ -1331,10 +1396,12 @@ check_other_functions(){
         exit 0
     fi
 
+    ##### root test ##### NOTE above don't require root ##########
     if [[ $(id -u) -ne 0 ]]; then
         echo "You must run it as root." >&2
         exit 1
     fi
+    ###### NOTE below require root ##########
 
     if [[ -n "$STOP_ID" ]]; then
         echo "Trying to kill $PROGNAME instance associated with $STOP_ID..."
@@ -1379,7 +1446,7 @@ check_wifi_settings() {
     fi
 
     if ! can_be_sta_and_ap ${WIFI_IFACE}; then
-        if is_wifi_connected ${WIFI_IFACE}; then
+        if is_interface_wifi_connected ${WIFI_IFACE}; then
             echo "ERROR: Your adapter can not be a station (i.e. be connected) and an AP at the same time" >&2
             exit 1
         elif [[ $NO_VIRT -eq 0 ]]; then
@@ -1431,45 +1498,38 @@ check_if_new_mac_valid() {
         exit 1
     fi
 
-    if [[ $(get_all_macaddrs | grep -c ${NEW_MACADDR}) -ne 0 ]]; then
+    if [[ $(get_all_mac_in_system | grep -c ${NEW_MACADDR}) -ne 0 ]]; then
         echo "WARN: MAC address '${NEW_MACADDR}' already exists" >&2
     fi
 }
 
 decide_target_interface() {
-    TARGET_IFACE=   # This is the existing physical interface to use
-    if [[ $CONN_IFACE ]]; then
-        TARGET_IFACE=$CONN_IFACE
-    elif [[ $WIFI_IFACE ]]; then
-        TARGET_IFACE=$WIFI_IFACE
+    # TARGET_IFACE is a existing physical interface
+    if [[ "$CONN_IFACE" ]]; then
+        echo "$CONN_IFACE"
+    elif [[ "$WIFI_IFACE" ]]; then
+        echo "$WIFI_IFACE"
     else
-        echo "No target interface specified" 1>&2
+        die "No target interface specified" 
         exit 1
     fi
-    echo "Target interface is ${TARGET_IFACE}"
 }
 
 decide_ip_addresses() {
     if [[ ! -n $GATEWAY ]]; then
-        generate_random_ip4
-        echo "Use random IPv4 address $GATEWAY"
+        GATEWAY="$(generate_random_ip4)"
+        echo "Use random LAN IPv4 address $GATEWAY"
     fi
 
     if [[ $IPV6 -eq 1 && ! -n $PREFIX6 ]]; then
-        generate_random_ip6
-        echo "Use random IPv6 address ${PREFIX6}${IID6}"
+        PREFIX6="$(generate_random_lan_ip6_prefix)"
+        echo "Use random LAN IPv6 address ${PREFIX6}${IID6}"
     fi
     if [[ $IPV6 -eq 1 ]]; then
-        GATEWAY6=${PREFIX6}${IID6}
+        GATEWAY6="${PREFIX6}${IID6}"
     fi
 }
-save_interface_old_mac() {
-    local IFACE
-    IFACE=$1
-    
-    OLD_MACADDR=$(get_macaddr $IFACE)
-    echo "Saved ${IFACE} old MAC address ${OLD_MACADDR} into RAM"
-}
+
 prepare_wifi_interface() {
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         iw dev ${WIFI_IFACE} set power_save off
@@ -1477,7 +1537,7 @@ prepare_wifi_interface() {
     
     if [[ $NO_VIRT -eq 0 ]]; then
     ## Will generate virtual wifi interface
-        if is_wifi_connected ${WIFI_IFACE}; then
+        if is_interface_wifi_connected ${WIFI_IFACE}; then
             WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
             WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
             echo "${WIFI_IFACE} already in channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
@@ -1513,9 +1573,27 @@ prepare_wifi_interface() {
 
 decide_subnet_interface() {
     if [[ $WIFI_IFACE ]]; then
-        SUBNET_IFACE=${AP_IFACE}
+        echo "${AP_IFACE}"
     else
-        SUBNET_IFACE=${TARGET_IFACE}
+        echo "${TARGET_IFACE}"
+    fi
+}
+
+dealwith_mac() {
+    local VMAC
+    
+    if [[ -n "$NEW_MACADDR" ]] ; then  # user choose to set subnet mac 
+
+        echo "Setting ${SUBNET_IFACE} new MAC address ${NEW_MACADDR} ..."
+        set_interface_mac ${SUBNET_IFACE} ${NEW_MACADDR} || die "Failed setting new MAC address"
+        
+    elif [[ $VWIFI_IFACE ]]; then # user didn't choose to set mac, but using virtual wifi interface
+
+        VMAC=$(get_new_macaddr_according_to_existing ${WIFI_IFACE})
+        if [[ "$VMAC" ]]; then
+            echo "Assigning MAC address $VMAC to virtual interface $VWIFI_IFACE according to $WIFI_IFACE ..."
+            set_interface_mac $VWIFI_IFACE $VMAC
+        fi
     fi
 }
 
@@ -1729,9 +1807,10 @@ start_dnsmasq() {
     sleep 2
 }
 
-check_if_need_rfkill_unblock_wifi() {
+check_rfkill_unblock_wifi() {
+    local PHY
     if which rfkill > /dev/null 2>&1 ; then
-        PHY=$(get_phy_device ${SUBNET_IFACE})
+        PHY=$(get_interface_phy_device ${SUBNET_IFACE})
         [[ -n $PHY ]] && rfkill unblock $(rfkill | grep $PHY | awk '{print $1}') >/dev/null 2>&1
     fi
 }
@@ -1748,14 +1827,17 @@ define_global_variables
 ARGS=( "$@" )
 
 parse_user_options "$@"
+# TODO: detect user option conflict
 
 # check if networkManager running
-nm_initcheck
+NM_RUNNING="$(is_nm_running)"
 
-init_tmpdir
+TMPDIR="$(decide_tmpdir)"
 
-# if user choose to deal with running instances, will exit after this 
+# if user choose to deal with running instances, will output some info then exit after this 
+# NOTE above don't require root
 check_other_functions 
+# NOTE below require root
 
 # if user choose to daemonize, will start new background process and exit this 
 daemonizing_check
@@ -1763,9 +1845,7 @@ daemonizing_check
 # check if wifi will work on this system and user settings
 [[ $WIFI_IFACE ]] && check_wifi_settings
 
-[[ "$MAC_USE_RANDOM" -eq 1 ]] && generate_random_mac 
-
-[[ -n "$NEW_MACADDR" ]] && check_if_new_mac_valid
+[[ -n "$NEW_MACADDR" ]] && check_if_new_mac_valid # check NEW_MACADDR. will exit if not valid
 
 # checks finished
 
@@ -1773,11 +1853,15 @@ daemonizing_check
 ## ========================================================
 echo "PID: $$"
 
-decide_target_interface # judge wired (-i) or wireless hotspot (--ap)
+TARGET_IFACE="$(decide_target_interface)"  # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
+echo "Target interface is ${TARGET_IFACE}"
 
-[[ "$MAC_USE_RANDOM" -eq 1 ]] && echo "Use random MAC address $NEW_MACADDR"
+if [[ "$MAC_USE_RANDOM" -eq 1 ]] ; then
+    NEW_MACADDR="$(generate_random_mac)"
+    echo "Use random MAC address $NEW_MACADDR"
+fi
 
-decide_ip_addresses
+decide_ip_addresses # ip 4 & 6 lan addresses
 
 # if user choose to make DHCP to tell clients to use other DNS, we don't have to serve DNS
 [[ $DHCP_DNS != 'gateway' && $DHCP_DNS6 != 'gateway' ]] && dnsmasq_NO_DNS=1
@@ -1785,32 +1869,25 @@ decide_ip_addresses
 #===========================================================
 #==== begin to do some change on config files and system===
 
-trap "cleanup" EXIT
-trap "clean_exit" SIGINT SIGUSR1 SIGTERM
-trap "die" SIGUSR2
+init_trap
 
-mkdir -p "$TMPDIR"
-chmod 755 "$TMPDIR" 2>/dev/null
-cd "$TMPDIR" || die "Couldn't change directory to linux-router's temporary path"
+init_conf_dirs #   CONFDIR  , COMMON_CONFDIR  . make dir
 
-CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)" # config dir for one instance
-chmod 755 "$CONFDIR"
-#echo "Config dir: $CONFDIR"
-echo $$ > "$CONFDIR/pid"
+[[ $WIFI_IFACE ]] && prepare_wifi_interface # this will create virtual ap interface (if needed) and set VWIFI_IFACE and AP_IFACE (if success)
 
-COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf" # config dir for all instances
-mkdir -p "$COMMON_CONFDIR"
-
-[[ $WIFI_IFACE ]] && prepare_wifi_interface
-
-decide_subnet_interface
-
+SUBNET_IFACE="$(decide_subnet_interface)"  # SUBNET_IFACE can be TARGET_IFACE (wired) or AP_IFACE (ap) .this is after prepare_wifi_interface()
 echo "$SUBNET_IFACE" > "$CONFDIR/subn_iface"
 
+# if virtual wifi interface, will be destroyed, so only need to save status when not
+[[ -z $VWIFI_IFACE ]] && backup_interface_status
+
+# TODO: should these 2 before calling prepare_wifi_interface ? in check_wifi_settings() ?
+# set iw country code
 if [[ $WIFI_IFACE && -n "$COUNTRY" && $USE_IWCONFIG -eq 0 ]]; then
     iw reg set "$COUNTRY" || die "Failed setting country code"
 fi
 
+# judge channel availability after changing country code
 if [[ $WIFI_IFACE ]] ; then
     can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
 fi
@@ -1820,34 +1897,22 @@ fi
 #===================================================
 
 # set interface unmanaged by networkManager
-if [[ $NM_RUNNING -eq 1 ]] && nm_knows $SUBNET_IFACE; then
-    nm_set_unmanaged ${SUBNET_IFACE}
+if [[ $NM_RUNNING -eq 1 ]] && nm_knows $TARGET_IFACE; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
+    nm_set_unmanaged ${SUBNET_IFACE} # will write NM_UNM_LIST
 fi
 
 [[ $NO_DNSMASQ -eq 0 ]] && write_dnsmasq_conf
 #===========================
 
 # initialize subnet interface
-# put subnet interface down first
+# take subnet interface down first
 ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
-# flush IPs of subnet interface
+# flush old IPs of subnet interface
 ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
-if [[ -n "$NEW_MACADDR" ]] ; then  # user choose to set subnet mac 
-    [[ -z $VWIFI_IFACE ]] && save_interface_old_mac ${SUBNET_IFACE} # virtual wifi interface will be destroyed, so no need to save mac
-    echo "Setting ${SUBNET_IFACE} new MAC address ${NEW_MACADDR} ..."
-    set_interface_mac ${SUBNET_IFACE} ${NEW_MACADDR} || die "Failed setting new MAC address"
-    
-elif [[ $VWIFI_IFACE ]]; then # user didn't choose to set mac, but using virtual wifi interface
+dealwith_mac
 
-    VMAC=$(get_new_macaddr_according_to_existing ${WIFI_IFACE})
-    if [[ "$VMAC" ]]; then
-        echo "Assigning MAC address $VMAC to virtual interface $VWIFI_IFACE according to $WIFI_IFACE ..."
-        set_interface_mac $VWIFI_IFACE $VMAC
-    fi
-fi
-
-[[ $WIFI_IFACE ]] && check_if_need_rfkill_unblock_wifi
+[[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
 # bring subnet interface up
 ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
@@ -1858,8 +1923,7 @@ ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
 # add ipv4 address to subnet interface
 ip -4 addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
 
-backup_interface_ipv6_bits
-set_interface_ipv6_bits
+set_ipv6_bits
 
 # add ipv6 address to subnet interface
 if [[ $IPV6 -eq 1 ]] ; then
@@ -1894,7 +1958,7 @@ elif [[ "$SHARE_METHOD" == "nat" ]]; then
 elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
 
     if [[ $IPV6 -eq 1 ]]; then
-        echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding" || die "Failed enabling $SUBNET_IFACE ipv6 forwarding"
+        echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding" || die "Failed enabling $SUBNET_IFACE ipv6 forwarding" # to set NA router bit
     fi
     
     [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using in transparent proxy mode but this host is providing local DNS, this may cause privacy leak !!!\n" >&2
@@ -1935,6 +1999,7 @@ show_qr() {
     qrencode -m 2 -t ANSIUTF8 "WIFI:T:${T};S:${S};P:${P};H:${H};"
     echo "Use this command to save QR code to image file:"
     echo "    qrencode -m 2 -o <file> \"WIFI:T:${T};S:${S};P:${P};H:${H};\""
+    echo
 }
 
 [[ "$QR" -eq 1 ]] && show_qr
