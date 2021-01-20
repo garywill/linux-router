@@ -4,7 +4,7 @@ Set Linux as router in one command. Able to Provide Internet, or create Wifi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c`.
 
-[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) :)
 
 ## Features
 
@@ -339,7 +339,7 @@ Options:
 
 - WPA3
 - Global IPv6
-- Refactor clients(neighbors) listing
+- Refactor clients(neighbors) listing function
 - Explictly ban forwarding if not needed
 
 ## Donate
