@@ -156,7 +156,7 @@ define_global_variables(){
     TP_PORT=  # transparent proxy port
     DNS=  # upstream DNS
 
-    USE_RANDOM_MAC=0
+    MAC_USE_RANDOM=0
     NEW_MACADDR=
     OLD_MACADDR=
     DAEMONIZE=0
@@ -270,7 +270,7 @@ parse_user_options(){
                 ;;
             --random-mac)
                 shift
-                USE_RANDOM_MAC=1
+                MAC_USE_RANDOM=1
                 ;;
                 
             --dns)
@@ -618,7 +618,7 @@ get_macaddr() {
     cat "/sys/class/net/${1}/address"
 }
 
-alloc_new_vface() { # only for wifi
+alloc_new_vface_name() { # only for wifi
     local i=0
     local v_iface_name=
     while :; do
@@ -633,7 +633,7 @@ alloc_new_vface() { # only for wifi
     done
 }
 
-dealloc_vface() {
+dealloc_vface_name() {
     rm -f $COMMON_CONFDIR/vfaces/$1
 }
 
@@ -643,9 +643,11 @@ get_all_macaddrs() {
     cat /sys/class/net/*/address
 }
 
-get_new_macaddr() {
-    local OLDMAC NEWMAC LAST_BYTE i
-    OLDMAC=$(get_macaddr "$1")
+get_new_macaddr_according_to_existing() {
+    local REALDEV OLDMAC NEWMAC LAST_BYTE i
+    REALDEV=$1
+    OLDMAC=$(get_macaddr "$REALDEV")
+    NEWMAC=""
     LAST_BYTE=$(printf %d 0x${OLDMAC##*:})
     for i in {10..240}; do
         NEWMAC="${OLDMAC%:*}:$(printf %02x $(( ($LAST_BYTE + $i) % 256 )))"
@@ -1065,15 +1067,17 @@ _cleanup() {
     
     rm -rf $CONFDIR
     
-    if [[ "$WIFI_IFACE" && "$NO_VIRT" -eq 0 ]]; then # the subnet interface (virtual wifi interface) will be removed
-        ip link set down dev ${AP_IFACE}
+    ip link set down dev ${SUBNET_IFACE}
+    
+    if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev ${VWIFI_IFACE} del
-        dealloc_vface $VWIFI_IFACE
+        dealloc_vface_name $VWIFI_IFACE
     else # the subnet interface will not be removed, so need to restore settings about it
         restore_interface_ipv6_bit
         
         if [[ -n "$NEW_MACADDR" ]] ; then
-            set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} && echo "Restore ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}"
+            echo "Restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR} ..."
+            set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} && echo "Successfully restored ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}"
         fi
         
         nm_restore_manage
@@ -1459,17 +1463,20 @@ decide_ip_addresses() {
         GATEWAY6=${PREFIX6}${IID6}
     fi
 }
-
+save_interface_old_mac() {
+    local IFACE
+    IFACE=$1
+    
+    OLD_MACADDR=$(get_macaddr $IFACE)
+    echo "Saved ${IFACE} old MAC address ${OLD_MACADDR} into RAM"
+}
 prepare_wifi_interface() {
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         iw dev ${WIFI_IFACE} set power_save off
     fi
     
     if [[ $NO_VIRT -eq 0 ]]; then
-    ## Generate virtual wifi interface
-    
-        VWIFI_IFACE=$(alloc_new_vface)
-
+    ## Will generate virtual wifi interface
         if is_wifi_connected ${WIFI_IFACE}; then
             WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
             WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
@@ -1487,24 +1494,19 @@ prepare_wifi_interface() {
             fi
         fi
 
-        VIRTDIEMSG="Maybe your WiFi adapter does not fully support virtual interfaces.
-        Try again with --no-virt."
         echo "Creating a virtual WiFi interface... "
-
+        VWIFI_IFACE=$(alloc_new_vface_name)
         if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
-            echo "${VWIFI_IFACE} created."
-            sleep 2
+            # Successfully created virtual wifi interface
+            sleep 2  # wait for virtual interface MAC may change by system (but could be changed back by other programs)
+            echo "${VWIFI_IFACE} created)"
         else
             VWIFI_IFACE=
-            die "$VIRTDIEMSG"
+            die "Failed creating virtual WiFi interface. Maybe your WiFi adapter does not fully support virtual interfaces. Try again with '--no-virt'"
         fi
-        OLD_MACADDR=$(get_macaddr ${VWIFI_IFACE})
-        if [[ -z "$NEW_MACADDR" && $(get_all_macaddrs | grep -c ${OLD_MACADDR}) -ne 1 ]]; then
-            NEW_MACADDR=$(get_new_macaddr ${VWIFI_IFACE})
-        fi
+        
         AP_IFACE=${VWIFI_IFACE}
-    else
-        OLD_MACADDR=$(get_macaddr ${WIFI_IFACE})
+    else # no virtual wifi interface, use wifi device interface itself
         AP_IFACE=${WIFI_IFACE}
     fi
 }
@@ -1761,7 +1763,7 @@ daemonizing_check
 # check if wifi will work on this system and user settings
 [[ $WIFI_IFACE ]] && check_wifi_settings
 
-[[ "$USE_RANDOM_MAC" -eq 1 ]] && generate_random_mac 
+[[ "$MAC_USE_RANDOM" -eq 1 ]] && generate_random_mac 
 
 [[ -n "$NEW_MACADDR" ]] && check_if_new_mac_valid
 
@@ -1771,13 +1773,11 @@ daemonizing_check
 ## ========================================================
 echo "PID: $$"
 
-decide_target_interface
+decide_target_interface # judge wired (-i) or wireless hotspot (--ap)
 
-[[ "$USE_RANDOM_MAC" -eq 1 ]] && echo "Use random MAC address $NEW_MACADDR"
+[[ "$MAC_USE_RANDOM" -eq 1 ]] && echo "Use random MAC address $NEW_MACADDR"
 
 decide_ip_addresses
-
-
 
 # if user choose to make DHCP to tell clients to use other DNS, we don't have to serve DNS
 [[ $DHCP_DNS != 'gateway' && $DHCP_DNS6 != 'gateway' ]] && dnsmasq_NO_DNS=1
@@ -1793,12 +1793,12 @@ mkdir -p "$TMPDIR"
 chmod 755 "$TMPDIR" 2>/dev/null
 cd "$TMPDIR" || die "Couldn't change directory to linux-router's temporary path"
 
-CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)"
+CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)" # config dir for one instance
 chmod 755 "$CONFDIR"
 #echo "Config dir: $CONFDIR"
 echo $$ > "$CONFDIR/pid"
 
-COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf"
+COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf" # config dir for all instances
 mkdir -p "$COMMON_CONFDIR"
 
 [[ $WIFI_IFACE ]] && prepare_wifi_interface
@@ -1833,9 +1833,18 @@ ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down
 # flush IPs of subnet interface
 ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
-# set subnet mac if needed
-if [[ -n "$NEW_MACADDR" ]] ; then
+if [[ -n "$NEW_MACADDR" ]] ; then  # user choose to set subnet mac 
+    [[ -z $VWIFI_IFACE ]] && save_interface_old_mac ${SUBNET_IFACE} # virtual wifi interface will be destroyed, so no need to save mac
+    echo "Setting ${SUBNET_IFACE} new MAC address ${NEW_MACADDR} ..."
     set_interface_mac ${SUBNET_IFACE} ${NEW_MACADDR} || die "Failed setting new MAC address"
+    
+elif [[ $VWIFI_IFACE ]]; then # user didn't choose to set mac, but using virtual wifi interface
+
+    VMAC=$(get_new_macaddr_according_to_existing ${WIFI_IFACE})
+    if [[ "$VMAC" ]]; then
+        echo "Assigning MAC address $VMAC to virtual interface $VWIFI_IFACE according to $WIFI_IFACE ..."
+        set_interface_mac $VWIFI_IFACE $VMAC
+    fi
 fi
 
 [[ $WIFI_IFACE ]] && check_if_need_rfkill_unblock_wifi
@@ -1859,26 +1868,39 @@ fi
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
+
     echo "No Internet sharing"
+    
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
+    
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
+
     [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS, queries may leak to other interfaces!!!\n" >&2
+    
     start_nat
+    
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
+    
     echo 1 > "/proc/sys/net/ipv4/ip_forward" || die "Failed enabling system ipv4 forwarding"
+    
     if [[ $IPV6 -eq 1 ]]; then
         echo 1 > "/proc/sys/net/ipv6/conf/all/forwarding" || die "Failed enabling system ipv6 forwarding"
     fi
+    
     # to enable clients to establish PPTP connections we must
     # load nf_nat_pptp module
-    modprobe nf_nat_pptp > /dev/null 2>&1
+    modprobe nf_nat_pptp > /dev/null 2>&1 && echo "Loaded kernel module nf_nat_pptp"
+    
 elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
+
     if [[ $IPV6 -eq 1 ]]; then
         echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding" || die "Failed enabling $SUBNET_IFACE ipv6 forwarding"
     fi
-    [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using transparent proxy but this host is providing local DNS, this may cause privacy leak !!!\n" >&2
+    
+    [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using in transparent proxy mode but this host is providing local DNS, this may cause privacy leak !!!\n" >&2
 
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
+    
     start_redsocks
 fi
 
