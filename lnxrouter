@@ -617,15 +617,14 @@ get_macaddr() {
     cat "/sys/class/net/${1}/address"
 }
 
-
-alloc_new_iface() { # only for wifi
+alloc_new_vface() { # only for wifi
     local i=0
     local v_iface_name=
     while :; do
         v_iface_name="x$i${WIFI_IFACE}"
-        if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/ifaces/${v_iface_name} ]]; then
-            mkdir -p $COMMON_CONFDIR/ifaces
-            touch $COMMON_CONFDIR/ifaces/${v_iface_name}
+        if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/vfaces/${v_iface_name} ]]; then
+            mkdir -p $COMMON_CONFDIR/vfaces
+            touch $COMMON_CONFDIR/vfaces/${v_iface_name}
             echo "${v_iface_name}"
             return
         fi
@@ -633,8 +632,8 @@ alloc_new_iface() { # only for wifi
     done
 }
 
-dealloc_iface() {
-    rm -f $COMMON_CONFDIR/ifaces/$1
+dealloc_vface() {
+    rm -f $COMMON_CONFDIR/vfaces/$1
 }
 
 #======
@@ -778,8 +777,6 @@ nm_restore_manage() {
         sleep 0.5
     fi
 }
-
-
 #=========
 
 iptables_()
@@ -934,7 +931,7 @@ stop_catch_dns() {
     fi
 }
 
-start_dhcp() {
+allow_dhcp() {
     echo 
     echo "iptables: allow DHCP port access"
     iptables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
@@ -942,7 +939,7 @@ start_dhcp() {
         ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT || die
     fi
 }
-stop_dhcp() {
+unallow_dhcp() {
     echo "iptables: stop dhcp"
     iptables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
     if [[ $IPV6 -eq 1 ]]; then
@@ -1009,6 +1006,40 @@ stop_redsocks() {
         ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
     fi
 }
+#---------------------------------------
+backup_interface_ipv6_bits() {
+    mkdir "$CONFDIR/sys_6_conf_iface" || die "Failed making dir to save interface IPv6 status"
+    cp  "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6" \
+        "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"     \
+        "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr"  \
+        "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode" \
+            "$CONFDIR/sys_6_conf_iface/" || die "Failed backking up interface ipv6 bits"
+}
+set_interface_ipv6_bits() {
+    if [[ $IPV6 -eq 1 ]]; then
+        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6"
+        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"
+        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr"
+        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode"
+    else
+        echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6"
+    fi
+}
+restore_interface_ipv6_bit() {
+    if [[ -d "$CONFDIR/sys_6_conf_iface" ]]; then
+        cp -f "$CONFDIR/sys_6_conf_iface/*" "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/"
+    fi
+}
+set_interface_mac() {
+    local INTERFACE
+    local MAC
+    
+    INTERFACE=$1
+    MAC=$2
+    
+    ip link set dev ${INTERFACE} address ${MAC} 
+}
+#---------------------------------------
 
 kill_processes() {
     #echo "Killing processes"
@@ -1024,26 +1055,27 @@ kill_processes() {
             kill $pid 2>/dev/null && ( echo "Killed $pid $pn" && rm $x ) || echo "Failed to kill $pid $pn, it may have exited"
         fi
     done
-    
 }
+
 _cleanup() {
     local x
 
     ip addr flush ${SUBNET_IFACE}
     
-    if [[ -d "$CONFDIR/sys_6_conf_iface" ]]; then
-        cp -f "$CONFDIR/sys_6_conf_iface/*" "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/"
-    fi
     rm -rf $CONFDIR
     
-    if [[ "$WIFI_IFACE" && "$NO_VIRT" -eq 0 ]]; then
+    if [[ "$WIFI_IFACE" && "$NO_VIRT" -eq 0 ]]; then # the subnet interface (virtual wifi interface) will be removed
         ip link set down dev ${AP_IFACE}
         iw dev ${VWIFI_IFACE} del
-        dealloc_iface $VWIFI_IFACE
-    else
-        if [[ -n "$NEW_MACADDR" ]]; then
-            ip link set dev ${TARGET_IFACE} address ${OLD_MACADDR} && echo "Restore ${TARGET_IFACE} to old MAC address ${OLD_MACADDR}"
+        dealloc_vface $VWIFI_IFACE
+    else # the subnet interface will not be removed, so need to restore settings about it
+        restore_interface_ipv6_bit
+        
+        if [[ -n "$NEW_MACADDR" ]] ; then
+            set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} && echo "Restore ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}"
         fi
+        
+        nm_restore_manage
     fi
     
     
@@ -1054,14 +1086,12 @@ _cleanup() {
             [[ -f $x ]] && kill -9 $(cat $x) && rm $x
         done
         
-        rm -d $COMMON_CONFDIR/ifaces
+        rm -d $COMMON_CONFDIR/vfaces
         rm -d $COMMON_CONFDIR
         rm -d $TMPDIR
     else
         echo "Exiting: This is NOT the only running instance"
     fi
-    
-    nm_restore_manage
 }
 
 clean_iptables() {
@@ -1080,7 +1110,7 @@ clean_iptables() {
     
     
     if [[ $NO_DNSMASQ -eq 0 ]]; then
-        stop_dhcp
+        unallow_dhcp
     fi
     
     [[ "$BANLAN" -eq 1 ]] && stop_ban_lan
@@ -1319,7 +1349,7 @@ daemonizing_check(){
 }
 
 #============================
-prepare_wifi() {
+check_wifi_settings() {
     if [[ $FREQ_BAND != 2.4 && $FREQ_BAND != 5 ]]; then
         echo "ERROR: Invalid frequency band" >&2
         exit 1
@@ -1437,7 +1467,7 @@ prepare_wifi_interface() {
     if [[ $NO_VIRT -eq 0 ]]; then
     ## Generate virtual wifi interface
     
-        VWIFI_IFACE=$(alloc_new_iface)
+        VWIFI_IFACE=$(alloc_new_vface)
 
         if is_wifi_connected ${WIFI_IFACE}; then
             WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
@@ -1493,11 +1523,6 @@ write_hostapd_conf() {
 
     can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
 
-    [[ $HIDDEN -eq 1 ]] && echo "Access Point's SSID is hidden!"
-
-    [[ $MAC_FILTER -eq 1 ]] && echo "MAC address filtering is enabled!"
-
-    [[ $ISOLATE_CLIENTS -eq 1 ]] && echo "Access Point's clients will be isolated!"
     # TODO: move above code
         
     # hostapd config
@@ -1685,31 +1710,7 @@ run_wifi_ap_processes() {
     sleep 3
 }
 
-backup_interface_ipv6_status() {
-    mkdir "$CONFDIR/sys_6_conf_iface"
-    if [[ $IPV6 -eq 1 ]]; then
-        cp "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"     \
-            "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr"  \
-            "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode" \
-                "$CONFDIR/sys_6_conf_iface/"
-        
-        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"
-        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr"
-        echo 0 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode"
-        
-        # TODO: move this code
-        ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6 address"
-    else
-        # TODO: also need to deal with "disable_ipv6" if ipv6 is enabled using this script
-        cp "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6"  "$CONFDIR/sys_6_conf_iface/"
-        echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/disable_ipv6"
-    fi
-}
-
-
 start_dnsmasq() {
-    start_dhcp
-
     if which complain > /dev/null 2>&1; then
         # openSUSE's apparmor does not allow dnsmasq to read files.
         # remove restriction.
@@ -1766,7 +1767,7 @@ check_other_functions
 daemonizing_check
 
 # check if wifi will work on this system and user settings
-[[ $WIFI_IFACE ]] && prepare_wifi
+[[ $WIFI_IFACE ]] && check_wifi_settings
 
 [[ "$USE_RANDOM_MAC" -eq 1 ]] && generate_random_mac 
 
@@ -1806,7 +1807,6 @@ chmod 755 "$CONFDIR"
 #echo "Config dir: $CONFDIR"
 echo $$ > "$CONFDIR/pid"
 
-
 COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf"
 mkdir -p "$COMMON_CONFDIR"
 
@@ -1821,7 +1821,7 @@ echo "$SUBNET_IFACE" > "$CONFDIR/subn_iface"
 #===================================================
 
 # set interface unmanaged by networkManager
-if [[ $NM_RUNNING -eq 1 ]] && nm_knows $TARGET_IFACE ; then
+if [[ $NM_RUNNING -eq 1 ]] && nm_knows $SUBNET_IFACE; then
     nm_set_unmanaged ${SUBNET_IFACE}
 fi
 
@@ -1836,7 +1836,7 @@ ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
 # set subnet mac if needed
 if [[ -n "$NEW_MACADDR" ]] ; then
-    ip link set dev ${SUBNET_IFACE} address ${NEW_MACADDR} || die "Failed setting new MAC address"
+    set_interface_mac ${SUBNET_IFACE} ${NEW_MACADDR} || die "Failed setting new MAC address"
 fi
 
 [[ $WIFI_IFACE ]] && check_if_need_rfkill_unblock_wifi
@@ -1848,10 +1848,15 @@ ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
 [[ $WIFI_IFACE ]] && run_wifi_ap_processes
 
 # add ipv4 address to subnet interface
-# TODO: move ipv6 code here
-ip addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
+ip -4 addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
 
-backup_interface_ipv6_status
+backup_interface_ipv6_bits
+set_interface_ipv6_bits
+
+# add ipv6 address to subnet interface
+if [[ $IPV6 -eq 1 ]] ; then
+    ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6 address"
+fi
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
@@ -1886,7 +1891,7 @@ fi
 
 [[ "$CATCH_DNS" -eq 1 ]] && start_catch_dns
 
-[[ $NO_DNSMASQ -eq 0 ]] && start_dnsmasq
+[[ $NO_DNSMASQ -eq 0 ]] && ( allow_dhcp ; start_dnsmasq )
 
 echo 
 echo "== Setting up completed, now linux-router is working =="
