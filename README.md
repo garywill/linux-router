@@ -319,6 +319,7 @@ Options:
 > These changes to system will not be restored by script's cleanup:
 > 1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`, needed by NAT Internet sharing.
 > 2. dnsmasq in Apparmor complain mode
+> 3. The wifi device which is used to create hotspot is `rfkill unblock`ed
 
 ## Dependencies
 

@@ -499,7 +499,7 @@ get_phy_device() { # only for wifi interface
 }
 
 get_adapter_info() { # only for wifi interface
-    local PHY
+    #local PHY
     PHY=$(get_phy_device "$1")
     [[ $? -ne 0 ]] && return 1
     iw phy $PHY info
@@ -1683,6 +1683,14 @@ ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
 if [[  -n "$NEW_MACADDR" ]]; then
     ip link set dev ${SUBNET_IFACE} address ${NEW_MACADDR} || die "Failed setting new MAC address"
+fi
+
+
+if [[ $WIFI_IFACE ]]; then
+    if which rfkill > /dev/null 2>&1 ; then
+        PHY=$(get_phy_device ${SUBNET_IFACE})
+        [[ -n $PHY ]] && rfkill unblock $(rfkill | grep $PHY | awk '{print $1}') >/dev/null 2>&1
+    fi
 fi
 
 ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
