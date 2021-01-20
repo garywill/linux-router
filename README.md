@@ -284,8 +284,8 @@ Options:
                             (example: US)
     --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
     --driver                Choose your WiFi adapter driver (default: nl80211)
-    -w <WPA version>        Use 1 for WPA, use 2 for WPA2, use 1+2 for both
-                            (default: 1+2)
+    -w <WPA version>        '2' for WPA2, '1' for WPA, '1+2' for both
+                            (default: 2)
     --psk                   Use 64 hex digits pre-shared-key instead of
                             passphrase
     --mac-filter            Enable Wifi hotspot MAC address filtering
