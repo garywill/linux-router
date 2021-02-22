@@ -303,10 +303,11 @@ Options:
 
   Instance managing:
     --daemon                Run in background
-    --list-running          Show running instances
-    --lc, --list-clients <id>     
+    -l, --list-running      Show running instances
+    --lc, --list-clients <id|interface>     
                             List clients of an instance. Or list neighbors of
-                            any interface, even if it isn't handled by us
+                            an interface, even if it isn't handled by us.
+                            (passive mode)
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'

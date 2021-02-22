@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# TODO: showing version or git commit on running
 VERSION=0.6.0
 PROGNAME="$(basename $0)"
 
@@ -100,10 +101,11 @@ Options:
 
   Instance managing:
     --daemon                Run in background
-    --list-running          Show running instances
-    --lc, --list-clients <id>     
+    -l, --list-running      Show running instances
+    --lc, --list-clients <id|interface>     
                             List clients of an instance. Or list neighbors of
-                            any interface, even if it isn't handled by us
+                            an interface, even if it isn't handled by us.
+                            (passive mode)
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
@@ -118,7 +120,6 @@ Examples:
     $PROGNAME -i eth1
     $PROGNAME --ap wlan0 MyAccessPoint
     $PROGNAME --ap wlan0 MyAccessPoint -p MyPassPhrase
-    $PROGNAME -n --ap wlan0 MyAccessPoint -p MyPassPhrase
     $PROGNAME -i eth1 --tp <transparent-proxy> --dns <dns-proxy>
 EOF
 }
@@ -440,7 +441,7 @@ parse_user_options(){
                 STOP_ID="$1"
                 shift
                 ;;
-            --list-running)
+            -l|--list-running)
                 shift
                 LIST_RUNNING=1
                 ;;
@@ -960,6 +961,7 @@ unallow_dhcp() {
     fi
 }
 
+# TODO: use 'DNAT' instead of '--to-ports' to support other IP
 start_redsocks() {
     echo
     echo "iptables: transparent proxy non-LAN TCP/UDP traffic to port ${TP_PORT}"
@@ -1026,7 +1028,7 @@ backup_ipv6_bits() {
         "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/accept_ra"     \
         "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/use_tempaddr"  \
         "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/addr_gen_mode" \
-            "$CONFDIR/sys_6_conf_iface/" || die "Failed backking up interface ipv6 bits"
+            "$CONFDIR/sys_6_conf_iface/" || die "Failed backing up interface ipv6 bits"
             
     if [[ "$SHARE_METHOD" == 'redsocks' ]] ; then
         cp "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding" \
@@ -1066,10 +1068,10 @@ backup_interface_status() {
     (ip link show ${SUBNET_IFACE} |grep -q "state UP") && SUBNET_IFACE_ORIGINAL_UP_STATUS=1
     
     # save interface old mac 
-    if [[ -n "$NEW_MACADDR" ]]; then 
+    #if [[ -n "$NEW_MACADDR" ]]; then 
         OLD_MACADDR=$(get_interface_mac $SUBNET_IFACE)
-        echo "Saved ${SUBNET_IFACE} old MAC address ${OLD_MACADDR} into RAM"
-    fi
+        #echo "Saved ${SUBNET_IFACE} old MAC address ${OLD_MACADDR} into RAM"
+    #fi
     
     backup_ipv6_bits
     
@@ -1084,9 +1086,9 @@ restore_interface_status() {
     
     restore_ipv6_bits
 
-    if [[ -n "$OLD_MACADDR" ]] ; then
+    if [[ -n "$OLD_MACADDR" && "$(get_interface_mac $SUBNET_IFACE)" != "$OLD_MACADDR" ]] ; then
         echo "Restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR} ..."
-        set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} && echo "Successfully restored ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}"
+        set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} || echo "Failed restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}" >&2
     fi
     
     nm_restore_manage
@@ -1180,6 +1182,7 @@ cleanup() {
     #kill -9 -$pgid
 }
 
+# NOTE function die() is designed not to be used before init_trap() executed
 die() { # SIGUSR2
     echo "Error occured"
     [[ -n "$1" ]] && echo -e "\nERROR: $1\n" >&2
@@ -1267,18 +1270,19 @@ print_clients_from_leases() {  # MAC|IP|HOST|lease
     
     FILEC="$(cat "$LEASE_FILE" | grep -v -E "^duid\b" | sed -r '/^\s*$/d' )"
 
+    # TODO: duid is somewhat related to ipv6. I don't know about it. Not sure excluding it miss some info or not
     echo "$FILEC" | while read line
     do
         #echo aa$line
         LEASEstamp="$(echo "$line" | awk '{print $1}')"
         MAC="$(echo "$line" | awk '{print $2}')"
         IP="$(echo "$line" | awk '{print $3}'  | sed 's/\[//g' | sed 's/\]//g')"
-        HOST="$(echo "$line" | awk '{print $4}' | sed 's/*/?/g')"
+        HOST="$(echo "$line" | awk '{print $4}' | sed 's/*/?/g' | sed 's/|/_/g' | sed 's/ /_/g' )"
         
         if [[ -n "$MAC" ]]; then
             LEASEstr="$(date -d @${LEASEstamp} +%m-%d_%X)"
             
-            echo "$MAC|$IP|$HOST|$LEASEstr"
+            echo "$MAC|$IP|$HOST|lease_$LEASEstr"
         fi
     done
     
@@ -1303,7 +1307,7 @@ print_interface_neighbors_via_iproute() {  # MAC|IP|_|STATUS
             MAC="?"
             STATUS="$(echo $line | awk -F'|' '$1="";$2="";$3="";$4="";{print}' | awk '{$1=$1;print}' | sed 's/ /,/g')"
         fi
-        if [[ -n "$IP" ]]; then
+        if [[ -n "$IP" && ( "$MAC" != "?" || "$STATUS" != "FAILED" ) ]]; then
             echo "$MAC|$IP|?|$STATUS"
         fi
     done
@@ -1315,12 +1319,12 @@ print_interface_neighbors_via_iw() {  # MAC|_|_|signal
     do
         if [[ -n "$MAC" ]]; then
             SIGNAL="$(iw dev $IFACE station get $MAC | grep "signal:" | awk '{print $2}')"
-            echo "${MAC}|?|?|${SIGNAL} dBm"
+            echo "${MAC}|?|?|${SIGNAL}_dBm"
         fi
     done
 }
 
-list_clients() {
+list_clients() { # passive mode. (use 'arp-scan' or 'netdiscover' if want active mode)
     local IFACE pid
     local CONFDIR
     
@@ -1336,7 +1340,7 @@ list_clients() {
     else # non-number given
         IFACE="$1"
         if ( ! is_interface $IFACE ) ; then
-            echo "'$IFACE' is not an interface" >&2
+            echo "'$IFACE' is not an interface or PID" >&2
             exit 1
         fi
         pid=$(get_pid_from_subn_iface "$IFACE")
@@ -1459,6 +1463,18 @@ daemonizing_check(){
 
 #============================
 check_wifi_settings() {
+
+    if ! ( which iw > /dev/null 2>&1 && iw dev $WIFI_IFACE info > /dev/null 2>&1 ); then
+        echo "WARN: Can't use 'iw' to operation this WiFi interface, trying 'iwconfig' ..." >&2
+        if which iwconfig > /dev/null 2>&1 && iwconfig $WIFI_IFACE > /dev/null 2>&1; then
+            USE_IWCONFIG=1
+            echo "WARN: Using 'iwconfig', not as good as 'iw'" >&2
+        else
+            echo "ERROR: Can't use 'iwconfig' to operation this WiFi interface neither" >&2
+            exit 1
+        fi
+    fi
+    
     if [[ $FREQ_BAND != 2.4 && $FREQ_BAND != 5 ]]; then
         echo "ERROR: Invalid frequency band" >&2
         exit 1
@@ -1547,8 +1563,8 @@ decide_target_interface() {
     elif [[ "$WIFI_IFACE" ]]; then
         echo "$WIFI_IFACE"
     else
-        die "No target interface specified" 
-        exit 1
+        echo "No target interface specified"  >&2
+        return 1
     fi
 }
 
@@ -1595,8 +1611,9 @@ prepare_wifi_interface() {
         VWIFI_IFACE=$(alloc_new_vface_name)
         if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
             # Successfully created virtual wifi interface
-            sleep 2  # wait for virtual interface MAC may change by system (but could be changed back by other programs)
-            echo "${VWIFI_IFACE} created)"
+            # if NM running, it will give the new virtual interface a random MAC. MAC will go back after setting NM unmanaged
+            sleep 2  
+            echo "${VWIFI_IFACE} created"
         else
             VWIFI_IFACE=
             die "Failed creating virtual WiFi interface. Maybe your WiFi adapter does not fully support virtual interfaces. Try again with '--no-virt'"
@@ -1890,8 +1907,9 @@ daemonizing_check
 ## ========================================================
 echo "PID: $$"
 
-TARGET_IFACE="$(decide_target_interface)"  # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
-echo "Target interface is ${TARGET_IFACE}"
+TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
+echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac $TARGET_IFACE))"
+# TODO: show interface type, device model and pci/usb id (hwdata  pci.ids), current driver
 
 if [[ "$MAC_USE_RANDOM" -eq 1 ]] ; then
     NEW_MACADDR="$(generate_random_mac)"
@@ -1907,6 +1925,7 @@ decide_ip_addresses # ip 4 & 6 lan addresses
 #==== begin to do some change on config files and system===
 
 init_trap
+# NOTE function die() is designed not to be used before init_trap() executed
 
 init_conf_dirs #   CONFDIR  , COMMON_CONFDIR  . make dir
 
@@ -1947,7 +1966,7 @@ ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down
 # flush old IPs of subnet interface
 ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
-dealwith_mac
+dealwith_mac # setting MAC should be after setting NM unmanaged
 
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
