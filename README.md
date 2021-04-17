@@ -4,7 +4,9 @@ Set Linux as router in one command. Able to Provide Internet, or create Wifi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) :)
+[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+
+（ ^\_^）o自自o（^_^ ）
 
 ## Features
 
@@ -110,7 +112,9 @@ lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 sudo lnxrouter -i lxcbr5
 ```
 
-### Transparent proxy with Tor
+### Transparent proxy 
+
+For example through Tor
 
 ```
 sudo lnxrouter -i eth1 --tp 9040 --dns 9053 -g 192.168.55.1 --p6 fd00:5:6:7::
@@ -127,7 +131,7 @@ DNSPort [fd00:5:6:7::1]:9053
 
 ### Clients-in-sandbox network
 
-To not give our infomation to clients:
+To not give our infomation to clients. Clients can still access Internet.
 
 ```
 sudo lnxrouter -i eth1 \
@@ -232,12 +236,14 @@ Options:
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
+                            (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
                             
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
-                            (example: fd00:1:2:3::) Using this enables '-6'
+                            (example: 'fd00:0:0:5::' or '5' shortly) 
+                            Using this enables '-6'
                             
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
@@ -333,13 +339,13 @@ Options:
 - procps or procps-ng
 - iproute2
 - dnsmasq
-- iptables
+- iptables (legacy. nft not tested)
 - WiFi hotspot dependencies
    - hostapd
    - iw
    - iwconfig (you only need this if 'iw' can not recognize your adapter)
    - haveged (optional)
-   - qrencode (opional)
+   - qrencode (optional)
 
 ## TODO
 
@@ -354,10 +360,12 @@ Options:
 
 （ ^\_^）o自自o（^_^ ）
 
-No? Okay, or just give me a star!
+[打赏一个](https://github.com/garywill/receiving/blob/master/receiving_methods.md) 
 
 ## For developers
 
 **Many thanks to project [create_ap](https://github.com/oblique/create_ap)**.
 
 This script was forked from create\_ap. Now it's quite different from it. (See `history` branch for how I modified create_ap)
+
+There're some TO-DOs listed, at both above and in the code file. We'll appreciate your help.

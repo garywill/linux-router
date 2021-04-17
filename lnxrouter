@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# TODO: showing version or git commit on running
+# TODO: showing version (or git commit) on running
 VERSION=0.6.0
 PROGNAME="$(basename $0)"
 
@@ -30,12 +30,14 @@ Options:
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
+                            (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
                             
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
-                            (example: fd00:1:2:3::) Using this enables '-6'
+                            (example: 'fd00:0:0:5::' or '5' shortly) 
+                            Using this enables '-6'
                             
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
@@ -201,6 +203,7 @@ define_global_variables(){
     CONFDIR=
     NM_RUNNING=0
     NM_UNM_LIST=  # it's called "list" but for now one interface
+    XT_COMMENT=1
 }
 
 parse_user_options(){
@@ -736,7 +739,7 @@ haveged_watchdog() {
                     echo "WARN: Low entropy detected. We recommend you to install \`haveged'" 1>&2
                     show_warn=0
                 fi
-            elif ! pidof haveged > /dev/null 2>&1; then
+            elif ! pidof haveged > /dev/null 2>&1; then # TODO judge zombie ?
                 echo "Low entropy detected, starting haveged" 1>&2
                 # boost low-entropy
                 haveged -w 1024 -p $COMMON_CONFDIR/haveged.pid
@@ -745,7 +748,24 @@ haveged_watchdog() {
         sleep 2
     done
 }
-
+pid_watchdog() {
+    local PID="$1"
+    local SLEEP="$2"
+    local ERR_MSG="$3"
+    local ST
+    while true
+    do 
+        if [[ -e "/proc/$PID" ]]; then
+            ST="$(cat "/proc/$PID/status" | grep "^State:" | awk '{print $2}')"
+            if [[ "$ST" != 'Z' ]]; then
+                sleep $SLEEP
+                continue
+            fi
+        fi
+        die "$ERR_MSG"
+    done
+    
+}
 #========
 
 
@@ -792,15 +812,22 @@ nm_restore_manage() {
     fi
 }
 #=========
-
 iptables_()
 {
-    iptables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    if [[ $XT_COMMENT -eq 1 ]]; then
+        iptables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    else
+        iptables -w $@ 
+    fi
     return $?
 }
 ip6tables_()
 {
-    ip6tables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    if [[ $XT_COMMENT -eq 1 ]]; then
+        ip6tables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    else
+        ip6tables -w $@
+    fi
     return $?
 }
 
@@ -843,7 +870,7 @@ start_ban_lan() {
     echo
     echo "iptables: Disallow clients to access LAN"
     iptables_ -N BANLAN-f-${SUBNET_IFACE}  || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 0.0.0.0/8 -j REJECT || die
+    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 0.0.0.0/8 -j REJECT || die # TODO: use array
     iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 10.0.0.0/8 -j REJECT || die
     iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 100.64.0.0/10 -j REJECT || die
     iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 127.0.0.0/8 -j REJECT || die
@@ -858,6 +885,7 @@ start_ban_lan() {
     iptables_ -N BANLAN-i-${SUBNET_IFACE}
     #iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} -j REJECT || die
     iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die
+    # TODO: ipv6 need icmp to function. maybe we can block some unneeded icmp to improve security
     
     iptables_ -I INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE} || die
     
@@ -1465,12 +1493,13 @@ daemonizing_check(){
 check_wifi_settings() {
 
     if ! ( which iw > /dev/null 2>&1 && iw dev $WIFI_IFACE info > /dev/null 2>&1 ); then
-        echo "WARN: Can't use 'iw' to operation this WiFi interface, trying 'iwconfig' ..." >&2
-        if which iwconfig > /dev/null 2>&1 && iwconfig $WIFI_IFACE > /dev/null 2>&1; then
-            USE_IWCONFIG=1
-            echo "WARN: Using 'iwconfig', not as good as 'iw'" >&2
-        else
-            echo "ERROR: Can't use 'iwconfig' to operation this WiFi interface neither" >&2
+        echo "WARN: Can't use 'iw' to operate interfce '$WIFI_IFACE', trying 'iwconfig' (not as good as 'iw') ..." >&2
+        USE_IWCONFIG=1
+    fi
+    
+    if [[ $USE_IWCONFIG -eq 1 ]]; then
+        if ! (which iwconfig > /dev/null 2>&1 && iwconfig $WIFI_IFACE > /dev/null 2>&1); then
+            echo "ERROR: Can't use 'iwconfig' to operate interfce '$WIFI_IFACE'" >&2
             exit 1
         fi
     fi
@@ -1572,11 +1601,15 @@ decide_ip_addresses() {
     if [[ ! -n $GATEWAY ]]; then
         GATEWAY="$(generate_random_ip4)"
         echo "Use random LAN IPv4 address $GATEWAY"
+    elif [[ ! "$GATEWAY" =~ "." ]]; then
+        GATEWAY="192.168.${GATEWAY}.1"
     fi
 
     if [[ $IPV6 -eq 1 && ! -n $PREFIX6 ]]; then
         PREFIX6="$(generate_random_lan_ip6_prefix)"
         echo "Use random LAN IPv6 address ${PREFIX6}${IID6}"
+    elif [[ ! "$PREFIX6" =~ ":" ]]; then
+        PREFIX6="fd00:0:0:${PREFIX6}::"
     fi
     if [[ $IPV6 -eq 1 ]]; then
         GATEWAY6="${PREFIX6}${IID6}"
@@ -1729,6 +1762,11 @@ write_dnsmasq_conf() {
     else
         NOBODY_GROUP="nogroup"
     fi
+    
+    mkfifo "$CONFDIR/dnsmasq.log" || die "Failed creating pipe file for dnsmasq"
+    chown nobody "$CONFDIR/dnsmasq.log" || die "Failed changing dnsmasq log file owner"
+    cat "$CONFDIR/dnsmasq.log" & 
+    
     cat <<- EOF > "$CONFDIR/dnsmasq.conf"
 		user=nobody
 		group=$NOBODY_GROUP
@@ -1740,7 +1778,7 @@ write_dnsmasq_conf() {
 		dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
 		dhcp-option-force=option:router,${GATEWAY}
 		#log-dhcp
-		log-facility=/dev/stdout
+		log-facility=$CONFDIR/dnsmasq.log
 		bogus-priv
 		domain-needed
 	EOF
@@ -1831,8 +1869,7 @@ run_wifi_ap_processes() {
     #    sleep 1
     #done
     #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
-    ( while [ -e /proc/$HOSTAPD_PID ]; do sleep 10; done ; die "hostapd exited" ) &
-
+    pid_watchdog $HOSTAPD_PID 10 "hostapd failed" &
     sleep 3
 }
 
@@ -1855,9 +1892,10 @@ start_dnsmasq() {
         i=$((i + 1))
         if [[ $i -gt 10 ]]; then die "Couldn't get dnsmasq PID" ; fi
     done
-    echo -n "dnsmasq PID: " ; cat "$CONFDIR/dnsmasq.pid"
+    DNSMASQ_PID="$(cat "$CONFDIR/dnsmasq.pid" )"
+    echo  "dnsmasq PID: $DNSMASQ_PID" 
     ######(wait $DNSMASQ_PID ; die "dnsmasq failed") &  # wait can't deal with non-child
-    ( while [ -e "/proc/$DNSMASQ_PID" ]; do sleep 10; done ; die "dnsmasq exited" ) &
+    pid_watchdog $DNSMASQ_PID 9 "dnsmasq failed" &
     sleep 2
 }
 
@@ -1985,6 +2023,18 @@ set_ipv6_bits
 if [[ $IPV6 -eq 1 ]] ; then
     ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6 address"
 fi
+
+function check_iptables() {
+    if iptables --version | grep "nf_tables" >/dev/null 2>&1 ; then
+        echo -e "\nWARN: Your system is using nftables. This script is tested with iptables legacy only. If you encounter problems, visit following URL for infomation:\n  https://github.com/oblique/create_ap/issues/373\n  https://github.com/oblique/create_ap/issues/433\n  https://github.com/garywill/linux-router/issues/18\n" >&2
+    fi
+    
+    if ! lsmod | grep -E "\bxt_comment\b" >/dev/null 2>&1 ; then
+        XT_COMMENT=0
+    fi
+}
+
+check_iptables
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
