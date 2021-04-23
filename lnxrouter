@@ -91,6 +91,8 @@ Options:
     --mac-filter            Enable Wifi hotspot MAC address filtering
     --mac-filter-accept     Location of Wifi hotspot MAC address filter list
                             (defaults to /etc/hostapd/hostapd.accept)
+    --redirect-to-localhost If -n is set, redirect every web request to
+                            localhost (useful for public information networks)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
     
@@ -183,6 +185,7 @@ define_global_variables(){
     FREQ_BAND=2.4
     NO_HAVEGED=0
     HOSTAPD_DEBUG_ARGS=
+    REDIRECT_TO_LOCALHOST=0
     USE_PSK=0
     ISOLATE_CLIENTS=0
     QR=0 # show wifi qr
@@ -429,6 +432,10 @@ parse_user_options(){
                     exit 1
                 fi
                 shift
+                ;;
+            --redirect-to-localhost)
+                shift
+                REDIRECT_TO_LOCALHOST=1
                 ;;
             --psk)
                 shift
@@ -1812,6 +1819,12 @@ write_dnsmasq_conf() {
         echo log-queries=extra >> "$CONFDIR/dnsmasq.conf"
     fi
     
+    if [[ "$SHARE_METHOD" == "none" && "$REDIRECT_TO_LOCALHOST" == "1" ]]; then
+        cat <<EOF >>$CONFDIR/dnsmasq.conf
+address=/#/$GATEWAY
+EOF
+    fi
+
     if [[ $DNS ]]; then
         DNS_count=$(echo "$DNS" | awk -F, '{print NF}')
         for (( i=1;i<=DNS_count;i++ )); do
