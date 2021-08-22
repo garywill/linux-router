@@ -6,7 +6,6 @@ It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one co
 
 [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
-（ ^\_^）o自自o（^_^ ）
 
 ## Features
 
@@ -358,7 +357,6 @@ Options:
 
 [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time!
 
-（ ^\_^）o自自o（^_^ ）
 
 [打赏一个](https://github.com/garywill/receiving/blob/master/receiving_methods.md) 
 
@@ -369,3 +367,8 @@ Options:
 This script was forked from create\_ap. Now it's quite different from it. (See `history` branch for how I modified create_ap)
 
 There're some TO-DOs listed, at both above and in the code file. We'll appreciate your help.
+
+------------------
+
+More of my projects: https://garywill.github.io
+

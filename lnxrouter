@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # TODO: showing version (or git commit) on running
-VERSION=0.6.0
+VERSION=0.6.2
 PROGNAME="$(basename $0)"
 
 export LC_ALL=C
@@ -1235,7 +1235,7 @@ init_conf_dirs() {
     chmod 755 "$TMPDIR" 2>/dev/null
     cd "$TMPDIR" || die "Couldn't change directory to linux-router's temporary path"
 
-    CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXX)" || die "Instance couldn't make config dir" # config dir for one instance
+    CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXXXXX)" || die "Instance couldn't make config dir" # config dir for one instance
     chmod 755 "$CONFDIR"
     #echo "Config dir: $CONFDIR"
     echo $$ > "$CONFDIR/pid"
