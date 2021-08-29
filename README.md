@@ -338,7 +338,7 @@ Options:
 - procps or procps-ng
 - iproute2
 - dnsmasq
-- iptables (legacy. nft not tested)
+- iptables (or nftables with `iptables-nft` translation linked)
 - WiFi hotspot dependencies
    - hostapd
    - iw

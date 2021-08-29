@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.6.2
+VERSION=0.6.3
 PROGNAME="$(basename $0)"
 
 export LC_ALL=C
@@ -205,7 +205,6 @@ define_global_variables(){
     CONFDIR=
     NM_RUNNING=0
     NM_UNM_LIST=  # it's called "list" but for now one interface
-    XT_COMMENT=1
 }
 
 parse_user_options(){
@@ -814,21 +813,34 @@ nm_restore_manage() {
     fi
 }
 #=========
+check_iptables()
+{
+    echo
+    iptables --version
+    
+    if which firewall-cmd > /dev/null 2>&1; then
+        if [[ "$(firewall-cmd --state)" == "running" ]]; then
+            echo "firewalld is running ($(firewall-cmd --version))"
+            #echo "firewalld version "
+        fi
+    fi
+}
 iptables_()
 {
-    if [[ $XT_COMMENT -eq 1 ]]; then
-        iptables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
-    else
+    # NETFILTER_XT_MATCH_COMMENT would be a env variable if user wants to disable '-m comment'
+    if [[ "$NETFILTER_XT_MATCH_COMMENT" == "0" ]]; then
         iptables -w $@ 
+    else
+        iptables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
     fi
     return $?
 }
 ip6tables_()
 {
-    if [[ $XT_COMMENT -eq 1 ]]; then
-        ip6tables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
-    else
+    if [[ "$NETFILTER_XT_MATCH_COMMENT" == "0" ]]; then
         ip6tables -w $@
+    else
+        ip6tables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
     fi
     return $?
 }
@@ -2033,16 +2045,6 @@ set_ipv6_bits
 if [[ $IPV6 -eq 1 ]] ; then
     ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6 address"
 fi
-
-function check_iptables() {
-    if iptables --version | grep "nf_tables" >/dev/null 2>&1 ; then
-        echo -e "\nWARN: Your system is using nftables. This script is tested with iptables legacy only. If you encounter problems, visit following URL for infomation:\n  https://github.com/oblique/create_ap/issues/373\n  https://github.com/oblique/create_ap/issues/433\n  https://github.com/garywill/linux-router/issues/18\n" >&2
-    fi
-    
-    if ! lsmod | grep -E "\bxt_comment\b" >/dev/null 2>&1 ; then
-        XT_COMMENT=0
-    fi
-}
 
 check_iptables
 
