@@ -4,8 +4,7 @@ Set Linux as router in one command. Able to Provide Internet, or create Wifi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
-
+[More tools and projects](https://garywill.github.io) | [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 ## Features
 
@@ -325,12 +324,13 @@ Options:
 ```
 
 > These changes to system will not be restored by script's cleanup:
+> 
 > 1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`
-> 1. dnsmasq in Apparmor complain mode
-> 1. Kernel module `nf_nat_pptp` loaded
-> 1. The wifi device which is used to create hotspot is `rfkill unblock`ed
-> 1. Wifi country code, if user specified
-
+> 2. dnsmasq (if used) in Apparmor complain mode
+> 3. hostapd (if used) in Apparmor complain mode
+> 4. Kernel module `nf_nat_pptp` loaded
+> 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
+> 6. Wifi country code, if user specified
 
 ## Dependencies
 
@@ -353,22 +353,14 @@ Options:
 - Explictly ban forwarding if not needed
 - Bring bridging method back
 
-## Donate
+## Meet author(s) and maintainer(s) and become one of them
 
-[Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time!
+Visit [**my homepage**](https://garywill.github.io) to see **more tools and projects**.
 
+> [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
+> 
+> ( ^\_^) o自自o (^_^ )
 
-[打赏一个](https://github.com/garywill/receiving/blob/master/receiving_methods.md) 
+Bisides, thank [create_ap](/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. (See `history` branch for how I modified create_ap). Also thank those who contributed to that project.
 
-## For developers
-
-**Many thanks to project [create_ap](https://github.com/oblique/create_ap)**.
-
-This script was forked from create\_ap. Now it's quite different from it. (See `history` branch for how I modified create_ap)
-
-There're some TO-DOs listed, at both above and in the code file. We'll appreciate your help.
-
-------------------
-
-More of my projects: https://garywill.github.io
-
+You can be contributor, too! There're some TO-DOs listed, at both above and in the code file. Your name ban be here!

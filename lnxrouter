@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# TODO: showing version (or git commit) on running
 VERSION=0.6.2
 PROGNAME="$(basename $0)"
 
@@ -9,9 +8,12 @@ export LC_ALL=C
 SCRIPT_UMASK=0122
 umask $SCRIPT_UMASK
 
+phead() {
+    echo "linux-router $VERSION (https://github.com/garywill/linux-router)"
+}
 usage() {
+    phead
     cat << EOF
-linux-router $VERSION (https://github.com/garywill/linux-router)
 Released under LGPL, with no warranty. Use on your own risk.
 
 Usage: $PROGNAME <options>
@@ -1848,6 +1850,7 @@ run_wifi_ap_processes() {
         haveged_watchdog &
         HAVEGED_WATCHDOG_PID=$!
         echo "$HAVEGED_WATCHDOG_PID" > "$CONFDIR/haveged_watchdog.pid"
+        echo
         echo "haveged_watchdog PID: $HAVEGED_WATCHDOG_PID" 
     fi
 
@@ -1860,6 +1863,11 @@ run_wifi_ap_processes() {
     fi
     echo 
     echo "Starting hostapd"
+    
+    if which complain > /dev/null 2>&1; then
+        complain hostapd
+    fi
+    
     # hostapd '-P' works only when use '-B' (run in background)
     $STDBUF_PATH hostapd $HOSTAPD_DEBUG_ARGS -P "$CONFDIR/hostapd.pid" "$CONFDIR/hostapd.conf"  &
     HOSTAPD_PID=$!
@@ -1874,14 +1882,15 @@ run_wifi_ap_processes() {
 }
 
 start_dnsmasq() {
+    echo 
+    echo "Starting dnsmasq"
+    
     if which complain > /dev/null 2>&1; then
         # openSUSE's apparmor does not allow dnsmasq to read files.
         # remove restriction.
         complain dnsmasq
     fi
-
-    echo 
-    echo "Starting dnsmasq"
+    
     # Using '-d'(no daemon) dnsmasq will not turn into 'nobody'
     # '-x' works only when no '-d'
     dnsmasq  -k -C "$CONFDIR/dnsmasq.conf" -x "$CONFDIR/dnsmasq.pid" -l "$CONFDIR/dnsmasq.leases" & 
@@ -1943,6 +1952,7 @@ daemonizing_check
 
 ## ===== Above don't echo anything if no warning or error====================
 ## ========================================================
+phead
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
