@@ -62,27 +62,44 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 
 ### Provide Internet to an interface
 
+No matter which interface (other than `eth1`) you're getting Internet from 
+
 ```
 sudo lnxrouter -i eth1
 ```
 
-### Provide an interface's Internet to another interface
-
-```
-sudo lnxrouter -i eth1 -o vpn0 --dhcp-dns 1.1.1.1 -6 --dhcp-dns6 [2606:4700:4700::1111]
-```
-> Read _Notice 1_
-
 ### Create Wifi hotspot
+
+No matter which interface you're getting Internet from (even from `wlan0`)
 
 ```
 sudo lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
 
-### LAN without Internet
+It will create virtual Interface `x0wlan0` for hotspot.
+
+### Provide an interface's Internet to another interface
+
+Clients access Internet through only `isp5`
 
 <details>
 
+```
+sudo lnxrouter -i eth1 -o isp5  --no-dns  --dhcp-dns 1.1.1.1  -6 --dhcp-dns6 [2606:4700:4700::1111]
+```
+
+It's recommended to:
+
+1. Stop serving local DNS to clients on our Linux host
+2. Tell clients which DNS to use (ISP5's DNS. Or, a safe public DNS, like above example)
+
+> Also, read *Notice 1*
+
+</details>
+
+### LAN without Internet
+
+<details>
 
 ```
 sudo lnxrouter -n -i eth1
@@ -118,14 +135,14 @@ sudo lnxrouter -i lxcbr5
 
 </details>
 
-### Transparent proxy 
+### Transparent proxy
 
-For example through Tor
+All clients' Internet traffic go through, for example, Tor
 
 <details>
 
 ```
-sudo lnxrouter -i eth1 --tp 9040 --dns 9053 -g 192.168.55.1 --p6 fd00:5:6:7::
+sudo lnxrouter -i eth1 --tp 9040 --dns 9053 -g 192.168.55.1 -6 --p6 fd00:5:6:7::
 ```
 
 In `torrc`
@@ -237,7 +254,7 @@ sudo brctl addbr firejail5
 
 ```
 sudo lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
-firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd  # nscd is cache service, which shouldn't be accessable here
+firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd  # nscd is cache service, which shouldn't be accessed in jail here
 ```
 
 </details>
@@ -283,11 +300,13 @@ Options:
                             whose destination port is 53 to this host
     --log-dns               Show DNS query log
     --dhcp-dns <IP1[,IP2]>|no
-                            Set IPv4 DNS offered by DHCP (default: this host)
+                            Set IPv4 DNS offered by DHCP (default: this host).
+                            This will enable '--no-dns' (Do not serve DNS)
     --dhcp-dns6 <IP1[,IP2]>|no
                             Set IPv6 DNS offered by DHCP (RA) 
                             (default: this host)
                             (Note IPv6 addresses need '[]' around)
+                            This will enable '--no-dns' (Do not serve DNS)
     --hostname <name>       DNS server associate this name with this host.
                             Use '-' to read name from /etc/hostname
     -d                      DNS server will take into account /etc/hosts
@@ -344,7 +363,15 @@ Options:
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
+```
 
+</details>
+ 
+## Notice
+
+<details>
+
+```
     Notice 1:   This script assume your host's default policy won't forward
                 packets, so the script won't explictly ban forwarding in any
                 mode. In some unexpected case may cause unwanted packets 
@@ -356,9 +383,7 @@ Options:
 
 ## What changes are done to Linux system
 
-On exit of an instance, script will do cleanup, i.e. undo the changes to system. Though, some changes won't be restored.
-
-These changes to system will **not** be restored by script's cleanup:
+On exit of a linux-router instance, script **will do cleanup**, i.e. undo most changes to system. Though, **some** changes will **not** be undone, which are:
 
 1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`
 2. dnsmasq (if used) in Apparmor complain mode
