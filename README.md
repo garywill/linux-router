@@ -4,7 +4,7 @@ Set Linux as router in one command. Able to Provide Internet, or create Wifi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[More tools and projects](https://garywill.github.io) | [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[More tools and projects](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 ## Features
 
@@ -81,6 +81,9 @@ sudo lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
 
 ### LAN without Internet
 
+<details>
+
+
 ```
 sudo lnxrouter -n -i eth1
 sudo lnxrouter -n --ap wlan0 MyAccessPoint -p MyPassPhrase
@@ -88,8 +91,11 @@ sudo lnxrouter -n --ap wlan0 MyAccessPoint -p MyPassPhrase
 
 > Read _Notice 1_
 
+</details>
 
 ### Internet for LXC
+
+<details>
 
 Create a bridge
 
@@ -110,9 +116,13 @@ lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 sudo lnxrouter -i lxcbr5
 ```
 
+</details>
+
 ### Transparent proxy 
 
 For example through Tor
+
+<details>
 
 ```
 sudo lnxrouter -i eth1 --tp 9040 --dns 9053 -g 192.168.55.1 --p6 fd00:5:6:7::
@@ -127,9 +137,13 @@ TransPort [fd00:5:6:7::1]:9040
 DNSPort [fd00:5:6:7::1]:9053
 ```
 
+</details>
+
 ### Clients-in-sandbox network
 
 To not give our infomation to clients. Clients can still access Internet.
+
+<details>
 
 ```
 sudo lnxrouter -i eth1 \
@@ -139,10 +153,13 @@ sudo lnxrouter -i eth1 \
     --catch-dns --log-dns   # optional
 ```
 
-> This script comes with no warrenty, use on your own risk
+</details>
 
+> This script comes with no warrenty. Use on your own risk
 
 ### Use as transparent proxy for LXD
+
+<details>
 
 Create a bridge
 
@@ -194,7 +211,11 @@ To remove the customized `eth0` to restore default `eth0`
 lxc config device remove <container> eth0
 ```
 
+</details>
+
 ### Use as transparent proxy for VirtualBox
+
+<details>
 
 In VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
 
@@ -202,7 +223,11 @@ In VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP
 sudo lnxrouter -i vboxnet5 --tp 9040 --dns 9053
 ```
 
+</details>
+
 ### Use as transparent proxy for firejail
+
+<details>
 
 Create a bridge
 
@@ -212,10 +237,14 @@ sudo brctl addbr firejail5
 
 ```
 sudo lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
-firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd
+firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd  # nscd is cache service, which shouldn't be accessable here
 ```
 
+</details>
+
 ### CLI usage and other features
+
+<details>
 
 ```
 Usage: lnxrouter <options>
@@ -323,14 +352,20 @@ Options:
                 want isolated network
 ```
 
-> These changes to system will not be restored by script's cleanup:
-> 
-> 1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`
-> 2. dnsmasq (if used) in Apparmor complain mode
-> 3. hostapd (if used) in Apparmor complain mode
-> 4. Kernel module `nf_nat_pptp` loaded
-> 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
-> 6. Wifi country code, if user specified
+</details>
+
+## What changes are done to Linux system
+
+On exit of an instance, script will do cleanup, i.e. undo the changes to system. Though, some changes won't be restored.
+
+These changes to system will **not** be restored by script's cleanup:
+
+1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`
+2. dnsmasq (if used) in Apparmor complain mode
+3. hostapd (if used) in Apparmor complain mode
+4. Kernel module `nf_nat_pptp` loaded
+5. The wifi device which is used to create hotspot is `rfkill unblock`ed
+6. Wifi country code, if user specified
 
 ## Dependencies
 
@@ -348,19 +383,82 @@ Options:
 
 ## TODO
 
+<details>
+
 - WPA3
 - Global IPv6
 - Explictly ban forwarding if not needed
 - Bring bridging method back
 
-## Meet author(s) and maintainer(s) and become one of them
+</details>
+
+## License
+
+linux-router is LGPL licensed
+
+<details>
+
+```
+linux-router
+Copyright (C) 2018  garywill
+
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+```
+
+</details>
+
+Upstream create_ap was BSD licensed
+
+<details>
+
+```
+Copyright (c) 2013, oblique
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+</details>
+
+## Meet developer(s) and become one of them
 
 Visit [**my homepage**](https://garywill.github.io) to see **more tools and projects**.
 
 > [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
 > 
-> ( ^\_^) o自自o (^_^ )
+> 🥂 ( ^\_^) o自自o (^_^ ) 🍻
 
-Bisides, thank [create_ap](/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. (See `history` branch for how I modified create_ap). Also thank those who contributed to that project.
+🤝 Bisides, thank [create_ap](https://github.com/oblique/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. (See `history` branch for how I modified create_ap). 🤝 Also thank those who contributed to that project.
 
-You can be contributor, too! There're some TO-DOs listed, at both above and in the code file. Your name ban be here!
+🤝 You can be contributor, too! There're some TO-DOs listed, at both above and in the code file. Your name can be here!

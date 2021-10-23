@@ -821,7 +821,8 @@ check_iptables()
     if which firewall-cmd > /dev/null 2>&1; then
         if [[ "$(firewall-cmd --state)" == "running" ]]; then
             echo "firewalld is running ($(firewall-cmd --version))"
-            #echo "firewalld version "
+            echo -e "\nWARN: We haven't completed the compatibility with firewalld.\nWARN: If you see any trouble, try:\nWARN:     1) 'firewall-cmd --zone=trusted --add-interface=<SUBN_IFACE>'\nWARN:     2) disable firewalld\n" >&2 
+            # TODO
         fi
     fi
 }
