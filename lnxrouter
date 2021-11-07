@@ -830,23 +830,83 @@ check_iptables()
         fi
     fi
 }
-iptables_()
+
+CUSTOM_CHAINS_4_filter=
+CUSTOM_CHAINS_4_nat=
+CUSTOM_CHAINS_6_filter=
+CUSTOM_CHAINS_6_nat=
+iptb() 
 {
-    # NETFILTER_XT_MATCH_COMMENT would be a env variable if user wants to disable '-m comment'
-    if [[ "$NETFILTER_XT_MATCH_COMMENT" == "0" ]]; then
-        iptables -w $@ 
-    else
-        iptables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    local FoS=$1 # 4 | 6
+    shift
+    local Vis=$1 # 'v' | 'n'
+    shift
+    local T=$1 # table
+    shift
+    local ACT=$1 # action: I | A | N  .  On undo: I or A -> D , N -> F+X
+    shift
+    local CH=$1 # chain
+    shift
+    
+    [[ "$IPV6" -ne 1 && "$FoS" == "6" ]] && return
+    
+    local CMD_HEAD=""
+    local MOUTH=""
+    local NECK=""
+    local HAND_UN_NC=0
+    local TAIL=""
+    
+    local FULL=""
+    local ADD_TO_UNDO=1
+    
+    for arr_name in CUSTOM_CHAINS_4_filter CUSTOM_CHAINS_4_nat CUSTOM_CHAINS_6_filter CUSTOM_CHAINS_6_nat
+    do
+        local arr_content
+        eval arr_content=\"\${$arr_name}\"
+        #echo $arr_content
+        
+        for w in  $arr_content
+        do
+            if [[ "$arr_name" =~ "$FoS" && "$arr_name" =~ "$T" && "$w" == "$CH" ]]; then
+                ADD_TO_UNDO=0
+            fi
+        done
+    done
+    
+
+    [[ "$FoS" == "4" ]] && CMD_HEAD="iptables -w "
+    [[ "$FoS" == "6" ]] && CMD_HEAD="ip6tables -w "
+    
+    [[ "$Vis" == 'v' ]] && MOUTH="-v"
+    
+    NECK="-t ${T}"
+    
+    if [[ "$ACT" == "N" ]]; then
+        eval CUSTOM_CHAINS_${FoS}_${T}=\"\${CUSTOM_CHAINS_${FoS}_${T}} ${CH}\"
+        HAND_UN_NC=1
     fi
-    return $?
-}
-ip6tables_()
-{
-    if [[ "$NETFILTER_XT_MATCH_COMMENT" == "0" ]]; then
-        ip6tables -w $@
-    else
-        ip6tables -w $@ -m comment --comment "lnxrouter-$$-$SUBNET_IFACE"
+    
+    
+    
+    [[ ! "$NETFILTER_XT_MATCH_COMMENT" == "0" ]] && TAIL="-m comment --comment lrt${$}${SUBNET_IFACE}"
+    
+    if [[ "$ADD_TO_UNDO" -eq 1 ]]; then
+        if [[ "$ACT" == "I" || "$ACT" == "A" ]]; then
+            echo "$CMD_HEAD $NECK -D ${CH} $@ $TAIL" >> $CONFDIR/undo_iptables.sh 
+        fi
+        
+        if [[ "$HAND_UN_NC" -eq 1 ]]; then
+            echo "$CMD_HEAD $NECK -F ${CH} $@ $TAIL" >> $CONFDIR/undo_iptables_2.sh
+            echo "$CMD_HEAD $NECK -X ${CH} $@ $TAIL" >> $CONFDIR/undo_iptables_2.sh
+        fi
     fi
+    
+ 
+    
+
+    FULL="$CMD_HEAD $MOUTH $NECK -${ACT} ${CH} $@ $TAIL"
+    #echo $FULL
+    $FULL
     return $?
 }
 
@@ -861,152 +921,84 @@ start_nat() {
     echo
     echo "iptables: NAT "
     if [[ $NO4 -eq 0 ]]; then
-        iptables_ -v -t nat -I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
-        iptables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-        iptables_ -v -I FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+        iptb 4 v nat I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
+        iptb 4 v filter I FORWARD  -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
+        iptb 4 v filter I FORWARD  -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
     fi
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -v -t nat -I POSTROUTING -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE || die
-        ip6tables_ -v -I FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT || die
-        ip6tables_ -v -I FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d ${PREFIX6}/64 -j ACCEPT || die
-    fi
-}
-stop_nat() {
-    echo "iptables: stop NAT"
-    if [[ $NO4 -eq 0 ]]; then
-        iptables_ -t nat -D POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE
-        iptables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT
-        iptables_ -D FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT
-    fi
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -t nat -D POSTROUTING -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE
-        ip6tables_ -D FORWARD -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT
-        ip6tables_ -D FORWARD -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${PREFIX6}/64 -j ACCEPT
-    fi
+
+        iptb 6 v nat I POSTROUTING  -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE || die
+        iptb 6 v filter I FORWARD   -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT || die
+        iptb 6 v filter I FORWARD   -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d ${PREFIX6}/64 -j ACCEPT || die
 }
 
 start_ban_lan() {
     echo
     echo "iptables: Disallow clients to access LAN"
-    iptables_ -N BANLAN-f-${SUBNET_IFACE}  || die
+    iptb 4 n filter N lrt${$}${SUBNET_IFACE}-BLF || die
     # TODO: allow '--dhcp-dns(6)' address port 53, which can be something needed, e.g. a VPN's internal private IP
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 0.0.0.0/8 -j REJECT || die # TODO: use array
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 10.0.0.0/8 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 100.64.0.0/10 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 127.0.0.0/8 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 169.254.0.0/16 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 172.16.0.0/12 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 192.168.0.0/16 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 224.0.0.0/4 -j REJECT || die
-    iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 255.255.255.255 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 0.0.0.0/8 -j REJECT || die # TODO: use array
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 10.0.0.0/8 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 100.64.0.0/10 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 127.0.0.0/8 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 169.254.0.0/16 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 172.16.0.0/12 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 192.168.0.0/16 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 224.0.0.0/4 -j REJECT || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 255.255.255.255 -j REJECT || die
     
-    iptables_ -I FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} || die
+    iptb 4 n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
     
-    iptables_ -N BANLAN-i-${SUBNET_IFACE}
-    #iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} -j REJECT || die
-    iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die
-    # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
+    iptb 4 n filter N lrt${$}${SUBNET_IFACE}-BLI || die
+    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
     
-    iptables_ -I INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE} || die
+    iptb 4 n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
     
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -N BANLAN-f-${SUBNET_IFACE}  || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d fc00::/7 -j REJECT || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d fe80::/10 -j REJECT || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ff00::/8 -j REJECT || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::1 -j REJECT || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::/128 -j REJECT || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::ffff:0:0/96 -j REJECT || die
-        ip6tables_ -v -I BANLAN-f-${SUBNET_IFACE} -d ::ffff:0:0:0/96 -j REJECT || die
 
-        ip6tables_ -I FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} || die
-        
-        ip6tables_ -N BANLAN-i-${SUBNET_IFACE}  || die
-        #ip6tables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} -j REJECT || die
-        ip6tables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} ! -p icmpv6 -j REJECT || die
+    iptb 6 n filter N lrt${$}${SUBNET_IFACE}-BLF  || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d fc00::/7 -j REJECT || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d fe80::/10 -j REJECT || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ff00::/8 -j REJECT || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::1 -j REJECT || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::/128 -j REJECT || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::ffff:0:0/96 -j REJECT || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::ffff:0:0:0/96 -j REJECT || die
 
-        ip6tables_ -I INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE} || die
-    fi
-}
-stop_ban_lan() {
-    echo "iptables: Unban clients' LAN access"
+    iptb 6 n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
     
-    iptables_ -D FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} 
-    
-    iptables_ -F BANLAN-f-${SUBNET_IFACE}
-    iptables_ -X BANLAN-f-${SUBNET_IFACE}
-    
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE}
-    
-    iptables_ -F BANLAN-i-${SUBNET_IFACE}
-    iptables_ -X BANLAN-i-${SUBNET_IFACE}
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -D FORWARD -i ${SUBNET_IFACE} -j BANLAN-f-${SUBNET_IFACE} 
-    
-        ip6tables_ -F BANLAN-f-${SUBNET_IFACE}
-        ip6tables_ -X BANLAN-f-${SUBNET_IFACE} 
-        
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE}
-        
-        ip6tables_ -F BANLAN-i-${SUBNET_IFACE}
-        ip6tables_ -X BANLAN-i-${SUBNET_IFACE} 
-    fi
+    iptb 6 n filter N lrt${$}${SUBNET_IFACE}-BLI  || die
+    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p icmpv6 -j REJECT || die
+
+    iptb 6 n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
+
 }
 
 allow_dns_port() {
     echo
     echo "iptables: allow DNS"
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
-    fi
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
+    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
 }
-unallow_dns_port() {
-    echo "iptables: unallow DNS"
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY}  -p udp -m udp --dport 53 -j ACCEPT
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT
-    fi
-}
+
 
 start_catch_dns() {
     echo
-    echo "iptables: redirect all TCP/UDP packet that destination port is 53"
-    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-    iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
-    fi
+    echo "iptables: redirect DNS queries to this host"
+    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
+    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
+
+    iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
+    iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
 }
-stop_catch_dns() {
-    echo "iptables: stop redirecting DNS queries"
-    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 
-    iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 
-        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 
-    fi
-}
+
 
 allow_dhcp() {
     echo 
     echo "iptables: allow dhcp"
-    iptables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT || die
-    fi
-}
-unallow_dhcp() {
-    echo "iptables: unallow dhcp"
-    iptables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT
-    fi
+    
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
+    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT || die
 }
 
 # TODO: use 'DNAT' instead of '--to-ports' to support other IP
@@ -1014,61 +1006,43 @@ start_redsocks() {
     echo
     echo "iptables: transparent proxy non-LAN TCP/UDP traffic to port ${TP_PORT}"
     if [[ $NO4 -eq 0 ]]; then
-        iptables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 0.0.0.0/8 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 10.0.0.0/8 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 100.64.0.0/10  -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 127.0.0.0/8 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 169.254.0.0/16 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 172.16.0.0/12 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 192.168.0.0/16 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 224.0.0.0/4 -j RETURN || die
-        iptables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d 255.255.255.255 -j RETURN || die
+        iptb 4 n nat N lrt${$}${SUBNET_IFACE}-TP || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 0.0.0.0/8 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 10.0.0.0/8 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 100.64.0.0/10  -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 127.0.0.0/8 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 169.254.0.0/16 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 172.16.0.0/12 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 192.168.0.0/16 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 224.0.0.0/4 -j RETURN || die
+        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 255.255.255.255 -j RETURN || die
         
-        iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-        iptables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-        iptables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j REDSOCKS-${SUBNET_IFACE} || die
+        iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j lrt${$}${SUBNET_IFACE}-TP || die
 
-        iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
     fi
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -t nat -N REDSOCKS-${SUBNET_IFACE} || die
-        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d fc00::/7 -j RETURN || die
-        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d fe80::/10 -j RETURN || die
-        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d ff00::/8 -j RETURN || die
-        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d ::1 -j RETURN || die
-        ip6tables_ -t nat -A REDSOCKS-${SUBNET_IFACE} -d :: -j RETURN || die
 
-        ip6tables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-        ip6tables_ -v -t nat -A REDSOCKS-${SUBNET_IFACE} -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb 6 n nat N lrt${$}${SUBNET_IFACE}-TP || die
+        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d fc00::/7 -j RETURN || die
+        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d fe80::/10 -j RETURN || die
+        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d ff00::/8 -j RETURN || die
+        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d ::1 -j RETURN || die
+        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d :: -j RETURN || die
 
-        ip6tables_ -v -t nat -I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j REDSOCKS-${SUBNET_IFACE} || die
+        iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        ip6tables_ -v -I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
-    fi
+        iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j lrt${$}${SUBNET_IFACE}-TP || die
+
+        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
+
 }
-stop_redsocks() {
-    echo "iptables: stop transparent proxy"
-    if [[ $NO4 -eq 0 ]]; then
-        iptables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24  -j REDSOCKS-${SUBNET_IFACE}
-        iptables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
-        iptables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
-        
-        iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
-        iptables_ -D INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
-    fi
-    if [[ $IPV6 -eq 1 ]]; then
-        ip6tables_ -t nat -D PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64  -j REDSOCKS-${SUBNET_IFACE}
-        ip6tables_ -t nat -F REDSOCKS-${SUBNET_IFACE}
-        ip6tables_ -t nat -X REDSOCKS-${SUBNET_IFACE}
-        
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT
-        ip6tables_ -D INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT
-    fi
-}
+
 #---------------------------------------
 backup_ipv6_bits() {
     mkdir "$CONFDIR/sys_6_conf_iface" || die "Failed making dir to save interface IPv6 status"
@@ -1193,25 +1167,9 @@ _cleanup() {
 }
 
 clean_iptables() {
-
-    if [[ "$SHARE_METHOD" == "nat" ]]; then
-        stop_nat
-    elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
-        stop_redsocks
-    fi
+    bash $CONFDIR/undo_iptables.sh
     
-    if [[ "$DHCP_DNS" == "gateway" || "$DHCP_DNS6" == "gateway" ]]; then
-        unallow_dns_port
-    fi
-    
-    [[ "$CATCH_DNS" -eq 1 ]] && stop_catch_dns
-    
-    
-    if [[ $NO_DNSMASQ -eq 0 ]]; then
-        unallow_dhcp
-    fi
-    
-    [[ "$BANLAN" -eq 1 ]] && stop_ban_lan
+    [[ -f $CONFDIR/undo_iptables_2.sh ]] && bash $CONFDIR/undo_iptables_2.sh
 }
 
 cleanup() {
@@ -1220,7 +1178,8 @@ cleanup() {
     echo
     echo "Doing cleanup.. "
     kill_processes
-    clean_iptables  2> /dev/null
+    echo "Cleanning up iptables .."
+    clean_iptables > /dev/null
     _cleanup 2> /dev/null
     
     pgid=$(ps opgid= $$ |awk '{print $1}' )
@@ -2057,6 +2016,7 @@ fi
 
 check_iptables
 
+echo "Not showing all iptables operations."
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
 
