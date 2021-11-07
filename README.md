@@ -1,6 +1,6 @@
 # Linux-router
 
-Set Linux as router in one command. Able to Provide Internet, or create Wifi hotspot. Support transparent proxy (redsocks). Also useful for routing VM/containers.
+Set Linux as router in one command. Able to provide Internet, or create WiFi hotspot. Support transparent proxy (redsocks). Also useful for routing VM/containers.
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
@@ -12,17 +12,19 @@ Basic features:
 
 - Create a NATed sub-network
 - Provide Internet
-- DHCP server (and RA) + DNS server
-  - Configuring what DNS the DHCP server offers to clients
-  - Configuring upstream DNS for local DNS server (kind of a DNS proxy)
+- DHCP server (and RA)
+  - Specify what DNS the DHCP server assigns to clients
+- DNS server
+  - Specify upstream DNS (kind of a plain DNS proxy)
 - IPv6 (behind NATed LAN, like IPv4)
-- Creating Wifi hotspot:
+- Creating WiFi hotspot:
   - Channel selecting
   - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
   - Create AP on the same interface you are getting Internet (usually require same channel)
 - Transparent proxy (redsocks)
 - Transparent DNS proxy (hijack port 53 packets)
 - Compatible with NetworkManager (automatically set interface as unmanaged)
+- You can run many instances, to create many different networks. Has instances managing feature.
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
 
@@ -36,7 +38,7 @@ Internet----(eth0/wlan0)-Linux-(wlanX)AP
 
 ```
                                     Internet
-Wifi AP(no DHCP)                        |
+WiFi AP(no DHCP)                        |
     |----(wlan1)-Linux-(eth0/wlan0)------
     |           (DHCP)
     |--client
@@ -69,7 +71,7 @@ sudo lnxrouter -i eth1
 
 no matter which interface (other than `eth1`) you're getting Internet from.
 
-### Create Wifi hotspot
+### Create WiFi hotspot
 
 ```
 sudo lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
@@ -253,8 +255,12 @@ sudo brctl addbr firejail5
 
 ```
 sudo lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
-firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd  # nscd is cache service, which shouldn't be accessed in jail here
+firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd
 ```
+
+Firejail's `/etc/resolv.conf` doesn't obtain DNS from DHCP, so we need to assign.
+
+nscd is domain name cache service, which shouldn't be accessed from in jail here.
 
 </details>
 
@@ -271,7 +277,7 @@ Options:
 
     -i <interface>          Interface to make NATed sub-network,
                             and to provide Internet to
-                            (To create Wifi hotspot use '--ap' instead)
+                            (To create WiFi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
                             (See Notice 1)
                             (Note using this with default DNS option may leak
@@ -319,12 +325,12 @@ Options:
                             redirect non-LAN TCP and UDP traffic to port.
                             (usually used with '--dns')
 
-  Wifi hotspot options:
+  WiFi hotspot options:
     --ap <wifi interface> <SSID>
-                            Create Wifi access point
+                            Create WiFi access point
     -p, --password <password>   
-                            Wifi password
-    --qr                    Show Wifi QR code in terminal
+                            WiFi password
+    --qr                    Show WiFi QR code in terminal
 
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -339,8 +345,8 @@ Options:
                             (default: 2)
     --psk                   Use 64 hex digits pre-shared-key instead of
                             passphrase
-    --mac-filter            Enable Wifi hotspot MAC address filtering
-    --mac-filter-accept     Location of Wifi hotspot MAC address filter list
+    --mac-filter            Enable WiFi hotspot MAC address filtering
+    --mac-filter-accept     Location of WiFi hotspot MAC address filter list
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
@@ -373,9 +379,9 @@ Options:
 ```
     Notice 1:   This script assume your host's default policy won't forward
                 packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case may cause unwanted packets 
-                leakage between 2 networks, which you should be aware of if you
-                want isolated network
+                mode. In some unexpected case (eg. mistaken configurations) may
+                cause unwanted packets leakage between 2 networks, which you
+                should be aware of if you want isolated network
 ```
 
 </details>
@@ -389,7 +395,7 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 3. hostapd (if used) in Apparmor complain mode
 4. Kernel module `nf_nat_pptp` loaded
 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
-6. Wifi country code, if user specified
+6. WiFi country code, if user assigns
 
 ## Dependencies
 
@@ -409,6 +415,7 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 
 <details>
 
+- Compatibility with firewalld
 - WPA3
 - Global IPv6
 - Explictly ban forwarding if not needed
@@ -479,10 +486,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and projects** 🛠️.
 
-> [❤️ Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([❤️ 打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
+> [❤️ Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([❤️ 扫个码打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
 > 
 > 🥂 ( ^\_^) o自自o (^_^ ) 🍻
 
 🤝 Bisides, thank [create_ap](https://github.com/oblique/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. (See `history` branch for how I modified create_ap). 🤝 Also thank those who contributed to that project.
 
-👨‍💻 You can be contributor, too! 🍃 There're some TO-DOs listed, at both above and in the code file. Also some unfulfilled enhancements in the Issues. Your name can be here!
+👨‍💻 You can be contributor, too! 🍃 There're some TO-DOs listed, at both [above](#todo) and [in the code file](https://github.com/garywill/linux-router/search?q=TODO&type=code). 🍃 Also some [unfulfilled enhancements in the Issues](https://github.com/garywill/linux-router/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement). Your name can be here!

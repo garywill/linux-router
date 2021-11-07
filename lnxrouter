@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.6.5
+VERSION=0.6.6
 PROGNAME="$(basename $0)"
 
 export LC_ALL=C
@@ -27,7 +27,7 @@ Options:
 
     -i <interface>          Interface to make NATed sub-network,
                             and to provide Internet to
-                            (To create Wifi hotspot use '--ap' instead)
+                            (To create WiFi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
                             (See Notice 1)
                             (Note using this with default DNS option may leak
@@ -75,12 +75,12 @@ Options:
                             redirect non-LAN TCP and UDP traffic to port.
                             (usually used with '--dns')
     
-  Wifi hotspot options:
+  WiFi hotspot options:
     --ap <wifi interface> <SSID>
-                            Create Wifi access point
+                            Create WiFi access point
     -p, --password <password>   
-                            Wifi password
-    --qr                    Show Wifi QR code in terminal
+                            WiFi password
+    --qr                    Show WiFi QR code in terminal
     
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -95,8 +95,8 @@ Options:
                             (default: 2)
     --psk                   Use 64 hex digits pre-shared-key instead of
                             passphrase
-    --mac-filter            Enable Wifi hotspot MAC address filtering
-    --mac-filter-accept     Location of Wifi hotspot MAC address filter list
+    --mac-filter            Enable WiFi hotspot MAC address filtering
+    --mac-filter-accept     Location of WiFi hotspot MAC address filter list
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
@@ -121,9 +121,9 @@ Options:
 
     Notice 1:   This script assume your host's default policy won't forward
                 packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case may cause unwanted packets 
-                leakage between 2 networks, which you should be aware of if you
-                want isolated network
+                mode. In some unexpected case (eg. mistaken configurations) may
+                cause unwanted packets leakage between 2 networks, which you
+                should be aware of if you want isolated network
                 
 Examples:
     $PROGNAME -i eth1
@@ -231,16 +231,10 @@ parse_user_options(){
                 shift
                 INTERNET_IFACE="$1"
                 shift
-                echo ""
-                echo "WARN: Since you're using in this mode, make sure you've read Notice 1" >&2
-                echo ""
                 ;;
             -n)
                 shift
                 SHARE_METHOD=none
-                echo ""
-                echo "WARN: Since you're using in this mode, make sure you've read Notice 1" >&2
-                echo ""
                 ;;
             --ban-priv)
                 shift
@@ -266,9 +260,6 @@ parse_user_options(){
             --no4)
                 shift
                 NO4=1
-                echo ""
-                echo "WARN: Since you're using in this mode, make sure you've read Notice 1" >&2
-                echo ""
                 ;;
             --p6)
                 shift
@@ -1097,7 +1088,7 @@ backup_interface_status() {
     
     backup_ipv6_bits
     
-    # TODO : backup ip and others
+    # TODO : ? backup ip and others???
     
     # nm managing status is saved when nm_set_unmanaged()
 }
@@ -1178,11 +1169,12 @@ cleanup() {
     echo
     echo "Doing cleanup.. "
     kill_processes
-    echo "Cleanning up iptables .."
+    echo "Undoing iptables changes .."
     clean_iptables > /dev/null
     _cleanup 2> /dev/null
     
     pgid=$(ps opgid= $$ |awk '{print $1}' )
+    echo "Killing PGID $pgid ..."
     kill -15 -$pgid
     sleep 1 
     echo "Cleaning up done"
@@ -1446,7 +1438,7 @@ check_other_functions(){
 
     ##### root test ##### NOTE above don't require root ##########
     if [[ $(id -u) -ne 0 ]]; then
-        echo "You must run it as root." >&2
+        echo "ERROR: Need root to continue" >&2
         exit 1
     fi
     ###### NOTE below require root ##########
@@ -1730,7 +1722,7 @@ write_hostapd_conf() {
 			rsn_pairwise=CCMP
 		EOF
     else
-        echo "WARN: Wifi is not protected by password" >&2
+        echo "WARN: WiFi is not protected by password" >&2
     fi
     chmod 600 "$CONFDIR/hostapd.conf"
 }
@@ -2016,15 +2008,22 @@ fi
 
 check_iptables
 
-echo "Not showing all iptables operations."
+echo "NOTICE: Not showing all operations done to iptables rules"
+
+[[ "$NO4" -eq 1 ]] && echo -e "\nWARN: Since you're using in this mode (no IPv4 Internet), make sure you've read Notice 1\n" >&2
+
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
 
     echo "No Internet sharing"
     
+    echo -e "\nWARN: Since you're using in this mode (no Internet share), make sure you've read Notice 1\n" >&2
+    
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
+
+    [[ "$INTERNET_IFACE" ]] && echo -e "\nWARN: Since you're using in this mode (specify Internet interface), make sure you've read Notice 1\n" >&2
 
     [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS. In some unexpected case (eg. mistaken configurations), queries may leak to other interfaces, which you should be aware of.\n" >&2
     
@@ -2032,10 +2031,10 @@ elif [[ "$SHARE_METHOD" == "nat" ]]; then
     
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     
-    echo 1 > "/proc/sys/net/ipv4/ip_forward" || die "Failed enabling system ipv4 forwarding"
+    echo 1 > "/proc/sys/net/ipv4/ip_forward" || die "Failed enabling system ipv4 forwarding" # TODO maybe uneeded in '--no4' mode
     
     if [[ $IPV6 -eq 1 ]]; then
-        echo 1 > "/proc/sys/net/ipv6/conf/all/forwarding" || die "Failed enabling system ipv6 forwarding"
+        echo 1 > "/proc/sys/net/ipv6/conf/all/forwarding" || die "Failed enabling system ipv6 forwarding" # TODO if '-o' used, set only 2 interfaces' bits
     fi
     
     # to enable clients to establish PPTP connections we must
