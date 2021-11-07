@@ -4,7 +4,7 @@ Set Linux as router in one command. Able to Provide Internet, or create Wifi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[More tools and projects](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 ## Features
 
@@ -12,15 +12,16 @@ Basic features:
 
 - Create a NATed sub-network
 - Provide Internet
-- DHCP server and RA
-- DNS server 
+- DHCP server (and RA) + DNS server
+  - Configuring what DNS the DHCP server offers to clients
+  - Configuring upstream DNS for local DNS server (kind of a DNS proxy)
 - IPv6 (behind NATed LAN, like IPv4)
 - Creating Wifi hotspot:
   - Channel selecting
   - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
-  - Create AP on the same interface you are getting Internet (require same channel)
+  - Create AP on the same interface you are getting Internet (usually require same channel)
 - Transparent proxy (redsocks)
-- DNS proxy
+- Transparent DNS proxy (hijack port 53 packets)
 - Compatible with NetworkManager (automatically set interface as unmanaged)
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
@@ -62,21 +63,19 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 
 ### Provide Internet to an interface
 
-No matter which interface (other than `eth1`) you're getting Internet from 
-
 ```
 sudo lnxrouter -i eth1
 ```
 
-### Create Wifi hotspot
+no matter which interface (other than `eth1`) you're getting Internet from.
 
-No matter which interface you're getting Internet from (even from `wlan0`)
+### Create Wifi hotspot
 
 ```
 sudo lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
 
-It will create virtual Interface `x0wlan0` for hotspot.
+no matter which interface you're getting Internet from (even from `wlan0`). Will create virtual Interface `x0wlan0` for hotspot.
 
 ### Provide an interface's Internet to another interface
 
@@ -88,10 +87,10 @@ Clients access Internet through only `isp5`
 sudo lnxrouter -i eth1 -o isp5  --no-dns  --dhcp-dns 1.1.1.1  -6 --dhcp-dns6 [2606:4700:4700::1111]
 ```
 
-It's recommended to:
-
-1. Stop serving local DNS to clients on our Linux host
-2. Tell clients which DNS to use (ISP5's DNS. Or, a safe public DNS, like above example)
+> In this case of usage, it's recommended to:
+> 
+> 1. Stop serving local DNS
+> 2. Tell clients which DNS to use (ISP5's DNS. Or, a safe public DNS, like above example)
 
 > Also, read *Notice 1*
 
@@ -274,21 +273,22 @@ Options:
                             and to provide Internet to
                             (To create Wifi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
+                            (See Notice 1)
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
     -n                      Do not provide Internet (See Notice 1)
     --ban-priv              Disallow clients to access my private network
-    
+
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
                             (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
-                            
+
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
                             (example: 'fd00:0:0:5::' or '5' shortly) 
                             Using this enables '-6'
-                            
+
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
@@ -298,35 +298,34 @@ Options:
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
     --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
                             whose destination port is 53 to this host
-    --log-dns               Show DNS query log
+    --log-dns               Show DNS query log (dnsmasq)
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host).
-                            This will enable '--no-dns' (Do not serve DNS)
     --dhcp-dns6 <IP1[,IP2]>|no
                             Set IPv6 DNS offered by DHCP (RA) 
                             (default: this host)
                             (Note IPv6 addresses need '[]' around)
-                            This will enable '--no-dns' (Do not serve DNS)
+                            Using both above two will enable '--no-dns' 
     --hostname <name>       DNS server associate this name with this host.
                             Use '-' to read name from /etc/hostname
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
-    
+
     --mac <MAC>             Set MAC address
     --random-mac            Use random MAC address
- 
+
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP traffic to port.
                             (usually used with '--dns')
-    
+
   Wifi hotspot options:
     --ap <wifi interface> <SSID>
                             Create Wifi access point
     -p, --password <password>   
                             Wifi password
     --qr                    Show Wifi QR code in terminal
-    
+
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
@@ -345,12 +344,12 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-    
+
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
     --vht_capab <VHT>       VHT capabilities
-    
+
     --no-haveged            Do not run haveged automatically when needed
 
   Instance managing:
@@ -366,7 +365,7 @@ Options:
 ```
 
 </details>
- 
+
 ## Notice
 
 <details>
@@ -400,11 +399,11 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 - dnsmasq
 - iptables (or nftables with `iptables-nft` translation linked)
 - WiFi hotspot dependencies
-   - hostapd
-   - iw
-   - iwconfig (you only need this if 'iw' can not recognize your adapter)
-   - haveged (optional)
-   - qrencode (optional)
+  - hostapd
+  - iw
+  - iwconfig (you only need this if 'iw' can not recognize your adapter)
+  - haveged (optional)
+  - qrencode (optional)
 
 ## TODO
 
@@ -478,12 +477,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Meet developer(s) and become one of them
 
-Visit [**my homepage**](https://garywill.github.io) to see **more tools and projects**.
+Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and projects** 🛠️.
 
-> [Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
+> [❤️ Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([❤️ 打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
 > 
 > 🥂 ( ^\_^) o自自o (^_^ ) 🍻
 
 🤝 Bisides, thank [create_ap](https://github.com/oblique/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. (See `history` branch for how I modified create_ap). 🤝 Also thank those who contributed to that project.
 
-🤝 You can be contributor, too! There're some TO-DOs listed, at both above and in the code file. Your name can be here!
+👨‍💻 You can be contributor, too! 🍃 There're some TO-DOs listed, at both above and in the code file. Also some unfulfilled enhancements in the Issues. Your name can be here!

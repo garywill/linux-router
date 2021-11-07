@@ -11,10 +11,13 @@ umask $SCRIPT_UMASK
 phead() {
     echo "linux-router $VERSION (https://github.com/garywill/linux-router)"
 }
+phead2() {
+    echo "Released under LGPL, with no warranty. Use on your own risk."
+}
 usage() {
     phead
+    phead2
     cat << EOF
-Released under LGPL, with no warranty. Use on your own risk.
 
 Usage: $PROGNAME <options>
 
@@ -26,6 +29,7 @@ Options:
                             and to provide Internet to
                             (To create Wifi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
+                            (See Notice 1)
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
     -n                      Do not provide Internet (See Notice 1)
@@ -50,15 +54,14 @@ Options:
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
     --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
                             whose destination port is 53 to this host
-    --log-dns               Show DNS query log
+    --log-dns               Show DNS query log (dnsmasq)
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host).
-                            This will enable '--no-dns' (Do not serve DNS)
     --dhcp-dns6 <IP1[,IP2]>|no
                             Set IPv6 DNS offered by DHCP (RA) 
                             (default: this host)
                             (Note IPv6 addresses need '[]' around)
-                            This will enable '--no-dns' (Do not serve DNS)
+                            Using both above two will enable '--no-dns' 
     --hostname <name>       DNS server associate this name with this host.
                             Use '-' to read name from /etc/hostname
     -d                      DNS server will take into account /etc/hosts
@@ -124,7 +127,6 @@ Options:
                 
 Examples:
     $PROGNAME -i eth1
-    $PROGNAME --ap wlan0 MyAccessPoint
     $PROGNAME --ap wlan0 MyAccessPoint -p MyPassPhrase
     $PROGNAME -i eth1 --tp <transparent-proxy> --dns <dns-proxy>
 EOF
@@ -821,7 +823,7 @@ check_iptables()
     iptables --version
     
     if which firewall-cmd > /dev/null 2>&1; then
-        if [[ "$(firewall-cmd --state)" == "running" ]]; then
+        if [[ "$(firewall-cmd --state 2>&1)" == "running" ]]; then
             echo "firewalld is running ($(firewall-cmd --version))"
             echo -e "\nWARN: We haven't completed the compatibility with firewalld.\nWARN: If you see any trouble, try:\nWARN:     1) 'firewall-cmd --zone=trusted --add-interface=<SUBN_IFACE>'\nWARN:     2) disable firewalld\n" >&2 
             # TODO
@@ -887,6 +889,7 @@ start_ban_lan() {
     echo
     echo "iptables: Disallow clients to access LAN"
     iptables_ -N BANLAN-f-${SUBNET_IFACE}  || die
+    # TODO: allow '--dhcp-dns(6)' address port 53, which can be something needed, e.g. a VPN's internal private IP
     iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 0.0.0.0/8 -j REJECT || die # TODO: use array
     iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 10.0.0.0/8 -j REJECT || die
     iptables_ -v -I BANLAN-f-${SUBNET_IFACE} -d 100.64.0.0/10 -j REJECT || die
@@ -902,7 +905,7 @@ start_ban_lan() {
     iptables_ -N BANLAN-i-${SUBNET_IFACE}
     #iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} -j REJECT || die
     iptables_ -v -I BANLAN-i-${SUBNET_IFACE} -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die
-    # TODO: ipv6 need icmp to function. maybe we can block some unneeded icmp to improve security
+    # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
     
     iptables_ -I INPUT -i ${SUBNET_IFACE} -j BANLAN-i-${SUBNET_IFACE} || die
     
@@ -1153,7 +1156,7 @@ kill_processes() { # for this instance
             pn=$( ps -p $pid -o comm= ) 
             #echo "Killing $pid $pn ... "
             pkill -P $pid
-            kill $pid 2>/dev/null && ( echo "Killed $pid $pn" && rm $x ) || echo "Failed to kill $pid $pn, it may have exited"
+            kill $pid 2>/dev/null && ( echo "Killed $(basename $x) $pid $pn" && rm $x ) || echo "Failed to kill $(basename $x) $pid $pn, it may have exited"
         fi
     done
 }
@@ -1968,6 +1971,9 @@ daemonizing_check
 ## ===== Above don't echo anything if no warning or error====================
 ## ========================================================
 phead
+phead2
+echo
+
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
@@ -2060,7 +2066,7 @@ if [[ "$SHARE_METHOD" == "none" ]]; then
     
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
 
-    [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS, queries may leak to other interfaces!!!\n" >&2
+    [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS. In some unexpected case (eg. mistaken configurations), queries may leak to other interfaces, which you should be aware of.\n" >&2
     
     start_nat
     
@@ -2082,7 +2088,7 @@ elif [[ "$SHARE_METHOD" == "redsocks" ]]; then
         echo 1 > "/proc/sys/net/ipv6/conf/$SUBNET_IFACE/forwarding" || die "Failed enabling $SUBNET_IFACE ipv6 forwarding" # to set NA router bit
     fi
     
-    [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using in transparent proxy mode but this host is providing local DNS, this may cause privacy leak !!!\n" >&2
+    [[ "$dnsmasq_NO_DNS" -eq 0 && ! $DNS ]] &&  echo -e "\nWARN: You are using in transparent proxy mode but this host is providing local DNS. In some unexpected case (eg. mistaken configurations), queries may leak to other interfaces, which you should be aware of.\n" >&2
 
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     
