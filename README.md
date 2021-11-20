@@ -4,7 +4,7 @@ Set Linux as router in one command. Able to provide Internet, or create WiFi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[📰 News & Developer Notes](https://github.com/garywill/linux-router/issues/28) | [More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 ## Features
 
@@ -23,7 +23,7 @@ Basic features:
   - Create AP on the same interface you are getting Internet (usually require same channel)
 - Transparent proxy (redsocks)
 - Transparent DNS proxy (hijack port 53 packets)
-- Compatible with NetworkManager (automatically set interface as unmanaged)
+- Detect NetworkManager and make sure it won't interfere (handle interface (un)managed status)
 - You can run many instances, to create many different networks. Has instances managing feature.
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
@@ -388,11 +388,11 @@ Options:
 
 ## What changes are done to Linux system
 
-On exit of a linux-router instance, script **will do cleanup**, i.e. undo most changes to system. Though, **some** changes will **not** be undone, which are:
+On exit of a linux-router instance, script **will do cleanup**, i.e. undo most changes to system. Though, **some** changes (if needed) will **not** be undone, which are:
 
 1. `/proc/sys/net/ipv4/ip_forward = 1` and `/proc/sys/net/ipv6/conf/all/forwarding = 1`
-2. dnsmasq (if used) in Apparmor complain mode
-3. hostapd (if used) in Apparmor complain mode
+2. dnsmasq in Apparmor complain mode
+3. hostapd in Apparmor complain mode
 4. Kernel module `nf_nat_pptp` loaded
 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
 6. WiFi country code, if user assigns
@@ -415,7 +415,7 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 
 <details>
 
-- Compatibility with firewalld
+- Detect firewalld and make sure it won't interfere our interface
 - WPA3
 - Global IPv6
 - Explictly ban forwarding if not needed

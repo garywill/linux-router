@@ -1158,7 +1158,7 @@ _cleanup() {
 }
 
 clean_iptables() {
-    bash $CONFDIR/undo_iptables.sh
+    [[ -f $CONFDIR/undo_iptables.sh ]] && bash $CONFDIR/undo_iptables.sh
     
     [[ -f $CONFDIR/undo_iptables_2.sh ]] && bash $CONFDIR/undo_iptables_2.sh
 }
@@ -1173,10 +1173,10 @@ cleanup() {
     clean_iptables > /dev/null
     _cleanup 2> /dev/null
     
-    pgid=$(ps opgid= $$ |awk '{print $1}' )
-    echo "Killing PGID $pgid ..."
-    kill -15 -$pgid
-    sleep 1 
+    #pgid=$(ps opgid= $$ |awk '{print $1}' )
+    #echo "Killing PGID $pgid ..."
+    #kill -15 -$pgid
+    #sleep 1 
     echo "Cleaning up done"
     #kill -9 -$pgid
 }
