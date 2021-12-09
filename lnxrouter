@@ -1588,6 +1588,10 @@ decide_ip_addresses() {
 }
 
 prepare_wifi_interface() {
+
+    sleep 6
+    echo; echo; echo;
+    echo "Trying to set power_save off ..."
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         iw dev ${WIFI_IFACE} set power_save off
     fi
@@ -1610,7 +1614,9 @@ prepare_wifi_interface() {
                 echo
             fi
         fi
-
+        
+        sleep 6
+        echo; echo; echo;
         echo "Creating a virtual WiFi interface... "
         VWIFI_IFACE=$(alloc_new_vface_name)
         if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
@@ -1925,6 +1931,8 @@ phead
 phead2
 echo
 
+echo " ============ In dev branch for issue #12 ==========="
+
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
@@ -1949,10 +1957,20 @@ init_trap
 
 init_conf_dirs #   CONFDIR  , COMMON_CONFDIR  . make dir
 
+journalctl -f &
+echo $! > $CONFDIR/journalctl.pid 
+
+dmesg -W &
+echo $! > $CONFDIR/dmesg.pid 
+
+tail -f /var/log/wpa_supplicant.log &
+echo $! > $CONFDIR/wpa_supplicant_log.pid 
+
 [[ $WIFI_IFACE ]] && prepare_wifi_interface # this will create virtual ap interface (if needed) and set VWIFI_IFACE and AP_IFACE (if success)
 
 SUBNET_IFACE="$(decide_subnet_interface)"  # SUBNET_IFACE can be TARGET_IFACE (wired) or AP_IFACE (ap) .this is after prepare_wifi_interface()
 echo "$SUBNET_IFACE" > "$CONFDIR/subn_iface"
+ip addr show dev ${SUBNET_IFACE}
 
 # if virtual wifi interface, will be destroyed, so only need to save status when not
 [[ -z $VWIFI_IFACE ]] && backup_interface_status
@@ -1972,6 +1990,10 @@ fi
 #===================================================
 #===================================================
 
+sleep 6
+echo; echo; echo;
+ip addr show dev ${SUBNET_IFACE}
+echo "Trying to set NM unmanage ..."
 # set interface unmanaged by networkManager
 if [[ $NM_RUNNING -eq 1 ]] && nm_knows $TARGET_IFACE; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
     nm_set_unmanaged ${SUBNET_IFACE} # will write NM_UNM_LIST
@@ -1980,18 +2002,46 @@ fi
 [[ $NO_DNSMASQ -eq 0 ]] && write_dnsmasq_conf
 #===========================
 
+
+sleep 6 
+echo; echo; echo;
+ip addr show dev ${SUBNET_IFACE}
+echo "Trying to set ${SUBNET_IFACE} down ..."
 # initialize subnet interface
 # take subnet interface down first
 ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
+
+sleep 6 
+echo; echo; echo;
+ip addr show dev ${SUBNET_IFACE}
+echo "Trying to flush ${SUBNET_IFACE} ..."
 # flush old IPs of subnet interface
 ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
+sleep 6
+echo; echo; echo;
+ip addr show dev ${SUBNET_IFACE}
 dealwith_mac # setting MAC should be after setting NM unmanaged
 
+sleep 6
+echo; echo; echo;
+ip addr show dev ${SUBNET_IFACE}
+echo "Trying to check and do rfkill unblock ..."
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
+sleep 6
+echo; echo; echo;
+ip addr show dev ${SUBNET_IFACE}
+echo "Trying to bring interface ${SUBNET_IFACE} up ..."
 # bring subnet interface up
 ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
+
+sleep 6
+echo; echo; echo;
+echo "Finished test. Exiting ..."
+clean_exit
+exit
+
 
 # hostapd , haveged
 [[ $WIFI_IFACE ]] && run_wifi_ap_processes
