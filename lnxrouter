@@ -1957,12 +1957,18 @@ init_trap
 
 init_conf_dirs #   CONFDIR  , COMMON_CONFDIR  . make dir
 
+echo "setting NM log level: nmcli general logging level TRACE domains ALL"
+nmcli general logging level TRACE domains ALL
+
+echo "Logging journalctl -f"
 journalctl -f &
 echo $! > $CONFDIR/journalctl.pid 
 
+echo "Logging dmesg -W"
 dmesg -W &
 echo $! > $CONFDIR/dmesg.pid 
 
+echo "Logging wpa_supplicant.log"
 tail -f /var/log/wpa_supplicant.log &
 echo $! > $CONFDIR/wpa_supplicant_log.pid 
 
