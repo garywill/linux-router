@@ -626,6 +626,32 @@ get_interface_mac() {
     cat "/sys/class/net/${1}/address"
 }
 
+get_interface_pci_info() {  # pci id / model / virtual
+    is_interface "$1" || return
+    
+    local device_path
+    local pci_id
+    local pci_full
+    
+    device_path="$(readlink -f /sys/class/net/$1)"
+    
+    if [[ "$device_path" == "/sys/devices/pci"* ]]; then
+        pci_id="$(echo $device_path | sed 's/\//\n/g' | tail -n 3 |sed -n 1p)"
+        
+        if which lspci >/dev/null 2>&1 ; then
+            pci_full="$( lspci -D -nn | grep -E "^$pci_id " )"
+            echo "  PCI: $pci_full"
+        else
+            echo "  PCI: $pci_id"
+        fi
+    elif [[ "$device_path" == *"/virtual/"* ]]; then
+        echo "  virtual interface"
+    fi
+    # TODO usb
+    # TODO current driver
+}
+
+
 alloc_new_vface_name() { # only for wifi
     local i=0
     local v_iface_name=
@@ -1928,8 +1954,7 @@ echo
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
-echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac $TARGET_IFACE))"
-# TODO: show interface type, device model and pci/usb id (hwdata  pci.ids), current driver
+echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac $TARGET_IFACE)) $(get_interface_pci_info $TARGET_IFACE)"
 
 if [[ "$MAC_USE_RANDOM" -eq 1 ]] ; then
     NEW_MACADDR="$(generate_random_mac)"
@@ -2065,7 +2090,7 @@ fi
 [[ $NO_DNSMASQ -eq 0 ]] && ( allow_dhcp ; start_dnsmasq )
 
 echo 
-echo "== Setting up completed, now linux-router is working =="
+echo "== Setting up completed, now linux-router should be working =="
 
 #============================================================
 #============================================================

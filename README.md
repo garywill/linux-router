@@ -4,7 +4,7 @@ Set Linux as router in one command. Able to provide Internet, or create WiFi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[📰 News & Developer Notes](https://github.com/garywill/linux-router/issues/28) | [More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[Linux-Router News & Developer Notes 📰](https://github.com/garywill/linux-router/issues/28) | [More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 ## Features
 
@@ -413,15 +413,14 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 
 ## TODO
 
-<details>
-
+Sooner is better:
 - Detect firewalld and make sure it won't interfere our interface
+
+Future:
 - WPA3
 - Global IPv6
 - Explictly ban forwarding if not needed
 - Bring bridging method back
-
-</details>
 
 ## License
 
@@ -486,7 +485,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and projects** 🛠️.
 
-> [❤️ Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([❤️ 扫个码打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
+> [❤️ Buy me a coffee](https://github.com/garywill/receiving/blob/master/receiving_methods.md) , this project took me lots of time! ([❤️ 扫码领红包并打赏一个!](https://github.com/garywill/receiving/blob/master/receiving_methods.md))
 > 
 > 🥂 ( ^\_^) o自自o (^_^ ) 🍻
 
