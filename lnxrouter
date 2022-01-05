@@ -1615,7 +1615,7 @@ decide_ip_addresses() {
 
 prepare_wifi_interface() {
 
-    sleep 6
+    sleep 1
     echo; echo; echo;
     echo "Trying to set power_save off ..."
     if [[ $USE_IWCONFIG -eq 0 ]]; then
@@ -1982,6 +1982,13 @@ init_trap
 
 init_conf_dirs #   CONFDIR  , COMMON_CONFDIR  . make dir
 
+echo -e "\nDistro:"
+cat /etc/os-release 
+
+echo -e "\nKernel:"
+uname -a
+echo
+
 echo "setting NM log level: nmcli general logging level TRACE domains ALL"
 nmcli general logging level TRACE domains ALL
 
@@ -2021,7 +2028,7 @@ fi
 #===================================================
 #===================================================
 
-sleep 6
+sleep 1
 echo; echo; echo;
 ip addr show dev ${SUBNET_IFACE}
 echo "Trying to set NM unmanage ..."
@@ -2034,7 +2041,7 @@ fi
 #===========================
 
 
-sleep 6 
+sleep 1
 echo; echo; echo;
 ip addr show dev ${SUBNET_IFACE}
 echo "Trying to set ${SUBNET_IFACE} down ..."
@@ -2042,32 +2049,32 @@ echo "Trying to set ${SUBNET_IFACE} down ..."
 # take subnet interface down first
 ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
 
-sleep 6 
+sleep 1
 echo; echo; echo;
 ip addr show dev ${SUBNET_IFACE}
 echo "Trying to flush ${SUBNET_IFACE} ..."
 # flush old IPs of subnet interface
 ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
-sleep 6
+sleep 1
 echo; echo; echo;
 ip addr show dev ${SUBNET_IFACE}
 dealwith_mac # setting MAC should be after setting NM unmanaged
 
-sleep 6
+sleep 1
 echo; echo; echo;
 ip addr show dev ${SUBNET_IFACE}
 echo "Trying to check and do rfkill unblock ..."
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
-sleep 6
+sleep 1
 echo; echo; echo;
 ip addr show dev ${SUBNET_IFACE}
 echo "Trying to bring interface ${SUBNET_IFACE} up ..."
 # bring subnet interface up
 ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
 
-sleep 6
+sleep 1
 echo; echo; echo;
 echo "Finished test. Exiting ..."
 clean_exit
