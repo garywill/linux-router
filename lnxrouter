@@ -1119,10 +1119,6 @@ backup_interface_status() {
     # nm managing status is saved when nm_set_unmanaged()
 }
 restore_interface_status() {
-    # virtual wifi interface will be destroyed, so no need to restore status
-    # don't use [[ $VWIFI_IFACE ]] to judge, if creating virtual wifi failed, VWIFI_IFACE is empty
-    [[ "$WIFI_IFACE" && "$NO_VIRT" -eq 0 ]] && return
-    
     restore_ipv6_bits
 
     if [[ -n "$OLD_MACADDR" && "$(get_interface_mac $SUBNET_IFACE)" != "$OLD_MACADDR" ]] ; then
@@ -1132,7 +1128,6 @@ restore_interface_status() {
     
     nm_restore_manage
     
-    [[ $SUBNET_IFACE_ORIGINAL_UP_STATUS -eq 1 ]] && ip link set up dev ${SUBNET_IFACE} && echo "Restore ${SUBNET_IFACE} to link up"
 }
 #---------------------------------------
 
@@ -1155,12 +1150,7 @@ kill_processes() { # for this instance
 _cleanup() {
     local x
 
-    ip addr flush ${SUBNET_IFACE}
-    
     rm -rf $CONFDIR
-    
-    ip link set down dev ${SUBNET_IFACE}
-    
     if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev ${VWIFI_IFACE} del
         dealloc_vface_name $VWIFI_IFACE
@@ -1596,15 +1586,13 @@ decide_target_interface() {
 
 decide_ip_addresses() {
     if [[ ! -n $GATEWAY ]]; then
-        GATEWAY="$(generate_random_ip4)"
-        echo "Use random LAN IPv4 address $GATEWAY"
+        echo
     elif [[ ! "$GATEWAY" =~ "." ]]; then
         GATEWAY="192.168.${GATEWAY}.1"
     fi
 
     if [[ $IPV6 -eq 1 && ! -n $PREFIX6 ]]; then
-        PREFIX6="$(generate_random_lan_ip6_prefix)"
-        echo "Use random LAN IPv6 address ${PREFIX6}${IID6}"
+        echo
     elif [[ ! "$PREFIX6" =~ ":" ]]; then
         PREFIX6="fd00:0:0:${PREFIX6}::"
     fi
@@ -1951,6 +1939,10 @@ phead
 phead2
 echo
 
+echo
+echo "This is workaround for #31. Must use with '-g' and for wired interface !"
+echo
+
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
@@ -2005,24 +1997,15 @@ fi
 [[ $NO_DNSMASQ -eq 0 ]] && write_dnsmasq_conf
 #===========================
 
-# initialize subnet interface
-# take subnet interface down first
-ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
-# flush old IPs of subnet interface
-ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
 
 dealwith_mac # setting MAC should be after setting NM unmanaged
 
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
-# bring subnet interface up
-ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
 
 # hostapd , haveged
 [[ $WIFI_IFACE ]] && run_wifi_ap_processes
 
-# add ipv4 address to subnet interface
-ip -4 addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
 
 set_ipv6_bits
 
