@@ -331,7 +331,7 @@ Options:
                             Create WiFi access point
     -p, --password <password>   
                             WiFi password
-    --qr                    Show WiFi QR code in terminal
+    --qr                    Show WiFi QR code in terminal (need qrencode)
     
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
@@ -420,7 +420,6 @@ I'm currently not packaging for any distro. If you do, open a PR and add the lin
   - iw
   - iwconfig (you only need this if 'iw' can not recognize your adapter)
   - haveged (optional)
-  - qrencode (optional)
 
 ## TODO
 
