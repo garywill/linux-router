@@ -92,7 +92,7 @@ sudo lnxrouter -i eth1 -o isp5  --no-dns  --dhcp-dns 1.1.1.1  -6 --dhcp-dns6 [26
 > In this case of usage, it's recommended to:
 > 
 > 1. Stop serving local DNS
-> 2. Tell clients which DNS to use (ISP5's DNS. Or, a safe public DNS, like above example)
+> 2. Tell clients which DNS to use ISP5's DNS. (Or, a safe public DNS, like above example)
 
 > Also, read *Notice 1*
 
