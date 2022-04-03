@@ -284,17 +284,17 @@ Options:
                             queries to other interfaces)
     -n                      Do not provide Internet (See Notice 1)
     --ban-priv              Disallow clients to access my private network
-
+    
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
                             (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4)
                             (See Notice 1). Usually used with '-6'
-
+                            
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
                             (example: 'fd00:0:0:5::' or '5' shortly) 
                             Using this enables '-6'
-
+                            
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
@@ -317,21 +317,22 @@ Options:
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
-
+    --dns-nocache           DNS server no cache
+    
     --mac <MAC>             Set MAC address
     --random-mac            Use random MAC address
-
+ 
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP traffic to port.
                             (usually used with '--dns')
-
+    
   WiFi hotspot options:
     --ap <wifi interface> <SSID>
                             Create WiFi access point
     -p, --password <password>   
                             WiFi password
     --qr                    Show WiFi QR code in terminal
-
+    
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
@@ -350,12 +351,12 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-
+    
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
     --vht_capab <VHT>       VHT capabilities
-
+    
     --no-haveged            Do not run haveged automatically when needed
 
   Instance managing:

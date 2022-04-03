@@ -67,6 +67,7 @@ Options:
     -d                      DNS server will take into account /etc/hosts
     -e <hosts_file>         DNS server will take into account additional 
                             hosts file
+    --dns-nocache           DNS server no cache
     
     --mac <MAC>             Set MAC address
     --random-mac            Use random MAC address
@@ -156,6 +157,7 @@ define_global_variables(){
     SHOW_DNS_QUERY=0  # log dns
     ETC_HOSTS=0
     ADDN_HOSTS=
+    DNS_NOCACHE=
     CONN_IFACE=    # which interface user choose to use to create network
     INTERNET_IFACE= # which interface to get Internet from
     THISHOSTNAME=   # this host's name the DNS tells clients 
@@ -321,6 +323,10 @@ parse_user_options(){
                 shift
                 ADDN_HOSTS="$1"
                 shift
+                ;;
+            --dns-nocache)
+                shift
+                DNS_NOCACHE=1
                 ;;
             
             --isolate-clients)
@@ -1821,6 +1827,10 @@ write_dnsmasq_conf() {
 			no-resolv
 			no-poll
 		EOF
+    fi
+    if [[ $DNS_NOCACHE -eq 1 ]]; then
+        echo "cache-size=0" >> "$CONFDIR/dnsmasq.conf"
+        echo "no-negcache" >> "$CONFDIR/dnsmasq.conf"
     fi
     if [[ $IPV6 -eq 1 ]];then
         cat <<- EOF  >> "$CONFDIR/dnsmasq.conf"
