@@ -397,6 +397,16 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
 6. WiFi country code, if user assigns
 
+## Install
+
+1-file-script. Download and run (meet the dependencies).
+
+I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here:
+
+| Linux distro |                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
+| Any          | download [1-file-script](https://raw.githubusercontent.com/garywill/linux-router/master/lnxrouter) and run |
+
 ## Dependencies
 
 - bash
