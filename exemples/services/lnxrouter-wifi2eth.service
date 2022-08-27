@@ -7,8 +7,8 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=5
-User=nadege
-ExecStart=/usr/bin/bash -c /usr/bin/lnxrouter -i eth0 -o wlan0 --random-mac
+User=spongebob
+ExecStart=/usr/bin/lnxrouter -i eth0 -o wlan0 --random-mac
 
 [Install]
 WantedBy=multi-user.target
