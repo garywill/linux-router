@@ -7,7 +7,7 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=5
-User=spongebob
+User=root
 ExecStart=/usr/bin/lnxrouter -i eth0 -o wlan0 --random-mac
 
 [Install]
