@@ -88,7 +88,10 @@ function install_packages() {
 }
 
 # install the packages
-install_packages hostapd haveged dnsmasq qrencode 
+install_packages hostapd
+install_packages haveged
+install_packages dnsmasq
+install_packages qrencode
 
 # make the /opt/lnxrouter directory
 sudo mkdir -p /opt/lnxrouter
@@ -96,14 +99,15 @@ sudo mkdir -p /opt/lnxrouter
 # make the /opt/lnxrouter/bin directory
 sudo mkdir -p /opt/lnxrouter/bin
 
-# copy the lnxrouter.sh script to /opt/lnxrouter/bin
-sudo cp lnxrouter.sh /opt/lnxrouter/bin
+# copy the lnxrouter script to /opt/lnxrouter/bin
+sudo cp lnxrouter /opt/lnxrouter/bin/lnxrouter
 
-# change the permissions on the lnxrouter.sh script
-sudo chmod 755 /opt/lnxrouter/bin/lnxrouter.sh
+# change the permissions on the lnxrouter script
+sudo chown -R $USER:$USER /opt/lnxrouter/
+sudo chmod a+x /opt/lnxrouter/bin/lnxrouter
 
 # create symbolic link to the lnxrouter.sh script
-sudo ln -s /opt/lnxrouter/bin/lnxrouter.sh /usr/local/bin/lnxrouter
+sudo ln -s /opt/lnxrouter/bin/lnxrouter /usr/bin/lnxrouter
 
 # display "It's done!" in yellow
 echo -e "\e[33mIt's done!\e[0m"
