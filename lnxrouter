@@ -662,7 +662,7 @@ alloc_new_vface_name() { # only for wifi
     local i=0
     local v_iface_name=
     while :; do
-        v_iface_name="x$i${WIFI_IFACE}"
+        v_iface_name="lnxr$i"
         if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/vfaces/${v_iface_name} ]]; then
             mkdir -p $COMMON_CONFDIR/vfaces
             touch $COMMON_CONFDIR/vfaces/${v_iface_name}
