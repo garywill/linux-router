@@ -87,6 +87,7 @@ Options:
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
                             for both Internet and AP
+    --virt-name <name>      Naming convension for virtual interface
     -c <channel>            Channel number (default: 1)
     --country <code>        Set two-letter country code for regularity
                             (example: US)
@@ -197,6 +198,7 @@ define_global_variables(){
     
     # script variables
     VWIFI_IFACE=  # virtual wifi interface name, if created
+    VIRT_PREFIX= # prefix to use for naming virtual interface
     AP_IFACE=     # can be VWIFI_IFACE or WIFI_IFACE
     USE_IWCONFIG=0  # some device can't use iw
     
@@ -405,6 +407,11 @@ parse_user_options(){
                 shift
                 NO_VIRT=1
                 ;;
+            --virt-name)
+                shift
+                VIRT_PREFIX="$1"
+                shift
+								;;
 
             --country)
                 shift
@@ -662,7 +669,11 @@ alloc_new_vface_name() { # only for wifi
     local i=0
     local v_iface_name=
     while :; do
-        v_iface_name="lnxr$i"
+        if [[ -z $VIRT_PREFIX ]]; then
+            v_iface_name="x$i${WIFI_IFACE}"
+        else
+            v_iface_name="$VIRT_PREFIX$i"
+        fi
         if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/vfaces/${v_iface_name} ]]; then
             mkdir -p $COMMON_CONFDIR/vfaces
             touch $COMMON_CONFDIR/vfaces/${v_iface_name}
@@ -1574,6 +1585,14 @@ check_wifi_settings() {
             echo "WARN: Realtek drivers usually have problems with WPA1, WPA2 is recommended" >&2
         fi
         echo "WARN: If AP doesn't work, read https://github.com/oblique/create_ap/blob/master/howto/realtek.md" >&2
+    fi
+
+    if [[ -z $VIRT_PREFIX ]]; then
+        if [[ ${#WIFI_IFACE} -gt 13 ]]; then
+            echo "WARN: $WIFI_IFACE has ${#WIFI_IFACE} characters which might be too long. If AP doesn't work, see --virt-name and https://github.com/garywill/linux-router/issues/44" >&2
+        fi
+    elif [[ ${#VIRT_PREFIX} -gt 14 ]]; then
+        echo "WARN: option --virt-name $VIRT_PREFIX has ${#VIRT_PREFIX} characters which might be too long, consider making it shorter in case of errors" >&2
     fi
 }
 
