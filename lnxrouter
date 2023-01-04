@@ -87,7 +87,7 @@ Options:
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
                             for both Internet and AP
-    --virt-name <name>      Naming convension for virtual interface
+    --virt-name <name>      Set name of virtual interface
     -c <channel>            Channel number (default: 1)
     --country <code>        Set two-letter country code for regularity
                             (example: US)
@@ -198,7 +198,7 @@ define_global_variables(){
     
     # script variables
     VWIFI_IFACE=  # virtual wifi interface name, if created
-    VIRT_PREFIX= # prefix to use for naming virtual interface
+    VIRT_NAME= # name to use for virtual interface if --virt-name is used
     AP_IFACE=     # can be VWIFI_IFACE or WIFI_IFACE
     USE_IWCONFIG=0  # some device can't use iw
     
@@ -409,9 +409,9 @@ parse_user_options(){
                 ;;
             --virt-name)
                 shift
-                VIRT_PREFIX="$1"
+                VIRT_NAME="$1"
                 shift
-								;;
+                ;;
 
             --country)
                 shift
@@ -516,6 +516,10 @@ sep_ip_port() {
 is_interface() {
     [[ -z "$1" ]] && return 1
     [[ -d "/sys/class/net/${1}" ]]
+}
+
+is_vface_name_allocated(){
+    is_interface "$1" || [[ -f "$COMMON_CONFDIR/vfaces/${1}" ]]
 }
 
 get_interface_phy_device() { # only for wifi interface
@@ -664,24 +668,19 @@ get_interface_pci_info() {  # pci id / model / virtual
     # TODO current driver
 }
 
-
 alloc_new_vface_name() { # only for wifi
     local i=0
-    local v_iface_name=
-    while :; do
-        if [[ -z $VIRT_PREFIX ]]; then
+    local v_iface_name="$VIRT_NAME"
+    if [[ -z $VIRT_NAME ]]; then
+        while :; do
             v_iface_name="x$i${WIFI_IFACE}"
-        else
-            v_iface_name="$VIRT_PREFIX$i"
-        fi
-        if ! is_interface ${v_iface_name} && [[ ! -f $COMMON_CONFDIR/vfaces/${v_iface_name} ]]; then
-            mkdir -p $COMMON_CONFDIR/vfaces
-            touch $COMMON_CONFDIR/vfaces/${v_iface_name}
-            echo "${v_iface_name}"
-            return
-        fi
-        i=$((i + 1))
-    done
+            i=$((i + 1))
+            is_vface_name_allocated ${v_iface_name} || break
+        done
+    fi
+    mkdir -p $COMMON_CONFDIR/vfaces
+    touch $COMMON_CONFDIR/vfaces/${v_iface_name}
+    echo "${v_iface_name}"
 }
 
 dealloc_vface_name() {
@@ -1587,12 +1586,16 @@ check_wifi_settings() {
         echo "WARN: If AP doesn't work, read https://github.com/oblique/create_ap/blob/master/howto/realtek.md" >&2
     fi
 
-    if [[ -z $VIRT_PREFIX ]]; then
+    if [[ -z $VIRT_NAME ]]; then
         if [[ ${#WIFI_IFACE} -gt 13 ]]; then
             echo "WARN: $WIFI_IFACE has ${#WIFI_IFACE} characters which might be too long. If AP doesn't work, see --virt-name and https://github.com/garywill/linux-router/issues/44" >&2
         fi
-    elif [[ ${#VIRT_PREFIX} -gt 14 ]]; then
-        echo "WARN: option --virt-name $VIRT_PREFIX has ${#VIRT_PREFIX} characters which might be too long, consider making it shorter in case of errors" >&2
+    elif [[ ${#VIRT_NAME} -gt 15 ]]; then
+        echo "WARN: option --virt-name $VIRT_NAME has ${#VIRT_NAME} characters which might be too long, consider making it shorter in case of errors" >&2
+    fi
+
+    if [[ ! -z $VIRT_NAME ]] && is_vface_name_allocated $VIRT_NAME; then
+      echo "WARN: interface $VIRT_NAME aleady exists, this will cause an error"
     fi
 }
 
@@ -1671,7 +1674,13 @@ prepare_wifi_interface() {
             echo "${VWIFI_IFACE} created"
         else
             VWIFI_IFACE=
-            die "Failed creating virtual WiFi interface. Maybe your WiFi adapter does not fully support virtual interfaces. Try again with '--no-virt'"
+            if [[ ! -z ${VIRT_NAME} ]] && [[ ${#VIRT_NAME} -gt 15 ]]; then
+              die "Failed creating virtual WiFi interface. This is likely because you have set a long name for your virtual interface using --virt-name, try making it shorter'"
+            elif [[ -z ${VIRT_NAME} ]] && [[ ${#WIFI_IFACE} -gt 13 ]]; then
+              die "Failed creating virtual WiFi interface. This is likely because your interface name is too long. Try using '--virt-name <shorter interface name>'"
+            else
+              die "Failed creating virtual WiFi interface. Maybe your WiFi adapter does not fully support virtual interfaces. Try again with '--no-virt'"
+            fi
         fi
         
         AP_IFACE=${VWIFI_IFACE}
