@@ -327,8 +327,8 @@ Options:
     --random-mac            Use random MAC address
  
     --tp <port>             Transparent proxy,
-                            redirect non-LAN TCP and UDP traffic to port.
-                            (usually used with '--dns')
+                            redirect non-LAN TCP and UDP(not tested) traffic to
+                            port. (usually used with '--dns')
     
   WiFi hotspot options:
     --ap <wifi interface> <SSID>
@@ -341,6 +341,7 @@ Options:
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
                             for both Internet and AP
+    --virt-name <name>      Set name of virtual interface
     -c <channel>            Channel number (default: 1)
     --country <code>        Set two-letter country code for regularity
                             (example: US)
