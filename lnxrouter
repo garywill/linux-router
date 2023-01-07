@@ -73,8 +73,8 @@ Options:
     --random-mac            Use random MAC address
  
     --tp <port>             Transparent proxy,
-                            redirect non-LAN TCP and UDP traffic to port.
-                            (usually used with '--dns')
+                            redirect non-LAN TCP and UDP(not tested) traffic to
+                            port. (usually used with '--dns')
     
   WiFi hotspot options:
     --ap <wifi interface> <SSID>
@@ -1037,7 +1037,7 @@ allow_dhcp() {
 # TODO: use 'DNAT' instead of '--to-ports' to support other IP
 start_redsocks() {
     echo
-    echo "iptables: transparent proxy non-LAN TCP/UDP traffic to port ${TP_PORT}"
+    echo "iptables: transparent proxy non-LAN TCP and UDP(not tested) traffic to port ${TP_PORT}"
     if [[ $NO4 -eq 0 ]]; then
         iptb 4 n nat N lrt${$}${SUBNET_IFACE}-TP || die
         iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 0.0.0.0/8 -j RETURN || die

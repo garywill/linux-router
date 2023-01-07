@@ -138,7 +138,7 @@ sudo lnxrouter -i lxcbr5
 
 ### Transparent proxy
 
-All clients' Internet traffic go through, for example, Tor
+All clients' Internet traffic go through, for example, Tor (notice this example is NOT an anonymity use)
 
 <details>
 
@@ -154,6 +154,10 @@ DNSPort 192.168.55.1:9053
 TransPort [fd00:5:6:7::1]:9040 
 DNSPort [fd00:5:6:7::1]:9053
 ```
+
+> **Warn**: Tor's anonymity relies on a purpose-made browser. Using Tor like this (sharing Tor's network to LAN clients) will NOT ensure anonymity.
+> 
+> Although we use Tor as example here, Linux-router does NOT ensure nor is NOT aiming at anonymity.
 
 </details>
 
@@ -173,7 +177,7 @@ sudo lnxrouter -i eth1 \
 
 </details>
 
-> This script comes with no warrenty. Use on your own risk
+> Linux-router comes with no warranty. Use on your own risk
 
 ### Use as transparent proxy for LXD
 
