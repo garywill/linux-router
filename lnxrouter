@@ -1223,7 +1223,7 @@ cleanup() {
     #kill -9 -$pgid
 }
 
-# NOTE function die() is designed not to be used before init_trap() executed
+# NOTE function die() is designed NOT to be used before init_trap() executed
 die() { # SIGUSR2
     echo "Error occured"
     [[ -n "$1" ]] && echo -e "\nERROR: $1\n" >&2
