@@ -6,6 +6,8 @@ It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one co
 
 [Linux-Router News & Developer Notes 📰](https://github.com/garywill/linux-router/issues/28) | [More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
+> [Read this readme in web doc reader](https://garywill.github.io/proj-doc/linux-router/) ( also available in 中文, Español, Русский язык ... )
+
 ## Features
 
 Basic features:
@@ -63,13 +65,13 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 
 ## Install
 
-1-file-script. Release on [Linux-router repo on Github](https://github.com/garywill/linux-router). Download and run the bash script (meet the dependencies).
+1-file-script. Release on [Linux-router repo on Github](https://github.com/garywill/linux-router). Just download and run the bash script (meet the dependencies). In this case use without installation.
 
 > I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here:
 
 | Linux distro |                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| Any          | download [1-file-script](https://raw.githubusercontent.com/garywill/linux-router/master/lnxrouter) and run |
+| Any          | download [1-file-script](https://raw.githubusercontent.com/garywill/linux-router/master/lnxrouter) and run without installation |
 
 ## Dependencies
 
