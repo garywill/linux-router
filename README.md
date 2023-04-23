@@ -61,6 +61,31 @@ Internet----(eth0/wlan0)-Linux-(eth1)------Another PC
 Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 ```
 
+## Install
+
+1-file-script. Release on [Linux-router repo on Github](https://github.com/garywill/linux-router). Download and run the bash script (meet the dependencies).
+
+> I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here:
+
+| Linux distro |                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
+| Any          | download [1-file-script](https://raw.githubusercontent.com/garywill/linux-router/master/lnxrouter) and run |
+
+## Dependencies
+
+- bash
+- procps or procps-ng
+- iproute2
+- dnsmasq
+- iptables (or nftables with `iptables-nft` translation linked)
+- WiFi hotspot dependencies
+  - hostapd
+  - iw
+  - iwconfig (you only need this if 'iw' can not recognize your adapter)
+  - haveged (optional)
+
+
+
 ## Usage
 
 ### Provide Internet to an interface
@@ -402,29 +427,6 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 4. Kernel module `nf_nat_pptp` loaded
 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
 6. WiFi country code, if user assigns
-
-## Install
-
-1-file-script. Download and run (meet the dependencies).
-
-I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here:
-
-| Linux distro |                                                                                                            |
-| ------------ | ---------------------------------------------------------------------------------------------------------- |
-| Any          | download [1-file-script](https://raw.githubusercontent.com/garywill/linux-router/master/lnxrouter) and run |
-
-## Dependencies
-
-- bash
-- procps or procps-ng
-- iproute2
-- dnsmasq
-- iptables (or nftables with `iptables-nft` translation linked)
-- WiFi hotspot dependencies
-  - hostapd
-  - iw
-  - iwconfig (you only need this if 'iw' can not recognize your adapter)
-  - haveged (optional)
 
 ## TODO
 
