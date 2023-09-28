@@ -89,6 +89,7 @@ Options:
                             for both Internet and AP
     --virt-name <name>      Set name of virtual interface
     -c <channel>            Channel number (default: 1)
+    --force_channel         Force the use of channel provided by -c flag
     --country <code>        Set two-letter country code for regularity
                             (example: US)
     --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
@@ -179,6 +180,7 @@ define_global_variables(){
     HIDDEN=0 # hidden wifi hotspot
     WIFI_IFACE=
     CHANNEL=default 
+    FORCECHANNEL=0
     WPA_VERSION=2
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
@@ -372,6 +374,10 @@ parse_user_options(){
                 shift
                 CHANNEL="$1"
                 shift
+                ;;
+            --force_channel)
+                shift
+                FORCECHANNEL=1
                 ;;
             -w)
                 shift
@@ -1648,7 +1654,7 @@ prepare_wifi_interface() {
     
     if [[ $NO_VIRT -eq 0 ]]; then
     ## Will generate virtual wifi interface
-        if is_interface_wifi_connected ${WIFI_IFACE}; then
+        if is_interface_wifi_connected ${WIFI_IFACE} && [[ FORCECHANNEL -eq 0 ]]; then
             WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
             WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
             echo "${WIFI_IFACE} already in channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
