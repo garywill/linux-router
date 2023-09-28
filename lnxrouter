@@ -103,14 +103,29 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
+    --no-haveged            Do not run haveged automatically when needed
     --hs20                  Enable Hotspot 2.0 (Make sure your hostapd build supports it)
 
+    WiFi 4(802.11N) Config:
     --ieee80211n            Enable IEEE 802.11n (HT)
-    --ieee80211ac           Enable IEEE 802.11ac (VHT)
+    --use_ht                Enable High Throughput mode
     --ht_capab <HT>         HT capabilities (default: [HT40+])
+
+    WiFi 5(802.11AC) Config:
+    --ieee80211ac           Enable IEEE 802.11ac (VHT)
+    --use_vht               Enable Very High Thoughtput mode
     --vht_capab <VHT>       VHT capabilities
-    
-    --no-haveged            Do not run haveged automatically when needed
+    --vht_channel_width <index> 
+                            Index of VHT Channel Width:
+                                0 for 20MHz or 40MHz (default)
+                                1 for 80MHz
+                                2 for 160MHz
+                                3 for 80+80MHz (Non-contigous 160MHz)    
+    --seg0_center_freq_idx <channel>
+                            Channel index of Center frequency for primary segment, use with --vht_channel_width
+    --seg1_center_freq_idx <channel>
+                            Channel index of Center frequency for secondary (second 80MHz) segment, use with --vht_channel_width=3
+                            Pick above 2 values from the F0 index column from the 5GHz table in https://en.wikipedia.org/wiki/List_of_WLAN_channels#5_GHz_(802.11a/h/n/ac/ax)
 
   Instance managing:
     --daemon                Run in background
@@ -187,9 +202,14 @@ define_global_variables(){
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
     IEEE80211N=0
+    REQUIREHT=0
     IEEE80211AC=0
+    REQUIREVHT=0
     HT_CAPAB='[HT40+]'
     VHT_CAPAB=
+    VHTCHANNELWIDTH=0
+    VHTSEG0CHINDEX=0
+    VHTSEG1CHINDEX=0
     DRIVER=nl80211
     NO_VIRT=0 # not use virtual interface
     COUNTRY=
@@ -396,9 +416,17 @@ parse_user_options(){
                 shift
                 IEEE80211N=1
                 ;;
+            --use_ht)
+                shift
+                REQUIREHT=1
+                ;;
             --ieee80211ac)
                 shift
                 IEEE80211AC=1
+                ;;
+            --use_vht)
+                shift
+                REQUIREVHT=1
                 ;;
             --ht_capab)
                 shift
@@ -408,6 +436,21 @@ parse_user_options(){
             --vht_capab)
                 shift
                 VHT_CAPAB="$1"
+                shift
+                ;;
+            --vht_channel_width)
+                shift
+                VHTCHANNELWIDTH="$1"
+                shift
+                ;;
+            --seg0_center_freq_idx)
+                shift
+                VHTSEG0CHINDEX="$1"
+                shift
+                ;;
+            --seg1_center_freq_idx)
+                shift
+                VHTSEG1CHINDEX="$1"
                 shift
                 ;;
             --driver)
@@ -1771,13 +1814,39 @@ write_hostapd_conf() {
 		EOF
     fi
 
+    if [[ $REQUIREHT -eq 1 ]]; then
+        echo "require_ht=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
     if [[ $IEEE80211AC -eq 1 ]]; then
         echo "ieee80211ac=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $REQUIREVHT -eq 1 ]]; then
+        echo "require_vht=1" >> "$CONFDIR/hostapd.conf"
     fi
 
     if [[ -n "$VHT_CAPAB" ]]; then
         echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
     fi
+
+	if [[ $VHTCHANNELWIDTH -gt 0 ]]; then
+		cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			vht_oper_chwidth=${VHTCHANNELWIDTH}
+		EOF
+	fi
+
+	if [[ $VHTSEG0CHINDEX -gt 0 ]]; then
+		cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			vht_oper_centr_freq_seg0_idx=${VHTSEG0CHINDEX}
+		EOF
+	fi
+
+	if [[ $VHTSEG1CHINDEX -gt 0 ]]; then
+		cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			vht_oper_centr_freq_seg1_idx=${VHTSEG0CHINDEX}
+		EOF
+	fi
 
     if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]]; then
         echo "wmm_enabled=1" >> "$CONFDIR/hostapd.conf"
@@ -1800,6 +1869,7 @@ write_hostapd_conf() {
     else
         echo "WARN: WiFi is not protected by password" >&2
     fi
+    echo "Config for current session is $CONFDIR/hostapd.conf" # Useful for sharing with other hostapd users.
     chmod 600 "$CONFDIR/hostapd.conf"
 }
 
