@@ -103,7 +103,8 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-    
+    --hs20                  Enable Hotspot 2.0 (Make sure your hostapd build supports it)
+
     --ieee80211n            Enable IEEE 802.11n (HT)
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
     --ht_capab <HT>         HT capabilities (default: [HT40+])
@@ -180,7 +181,8 @@ define_global_variables(){
     HIDDEN=0 # hidden wifi hotspot
     WIFI_IFACE=
     CHANNEL=default 
-    FORCECHANNEL=0
+    FORCECHANNEL=0 # Forces channel provided by -c flag
+    HOTSPOT20=0 # For enabling Hotspot 2.0
     WPA_VERSION=2
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
@@ -378,6 +380,10 @@ parse_user_options(){
             --force_channel)
                 shift
                 FORCECHANNEL=1
+                ;;
+            --hs20)
+                shift
+                HOTSPOT20=1
                 ;;
             -w)
                 shift
@@ -1752,6 +1758,10 @@ write_hostapd_conf() {
 			macaddr_acl=${MAC_FILTER}
 			accept_mac_file=${MAC_FILTER_ACCEPT}
 		EOF
+    fi
+
+    if [[ $HOTSPOT20 -eq 1 ]]; then
+        echo "hs20=1" >> "$CONFDIR/hostapd.conf"
     fi
 
     if [[ $IEEE80211N -eq 1 ]]; then
