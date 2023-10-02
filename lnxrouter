@@ -1844,7 +1844,7 @@ write_hostapd_conf() {
 
 	if [[ $VHTSEG1CHINDEX -gt 0 ]]; then
 		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			vht_oper_centr_freq_seg1_idx=${VHTSEG0CHINDEX}
+			vht_oper_centr_freq_seg1_idx=${VHTSEG1CHINDEX}
 		EOF
 	fi
 
