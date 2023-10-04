@@ -105,26 +105,29 @@ Options:
     --no-haveged            Do not run haveged automatically when needed
     --hs20                  Enable Hotspot 2.0 (Make sure your hostapd build supports it)
 
-    WiFi 4(802.11N) Config:
+    WiFi 4 (802.11n) configs:
     --ieee80211n            Enable IEEE 802.11n (HT)
-    --use_ht                Enable High Throughput mode
-    --ht_capab <HT>         HT capabilities (default: [HT40+])
+    --require-ht            Require station HT (High Throughput) mode
+    --ht-capab <HT>         HT capabilities (default: [HT40+])
 
-    WiFi 5(802.11AC) Config:
+    WiFi 5 (802.11ac) configs:
     --ieee80211ac           Enable IEEE 802.11ac (VHT)
-    --use_vht               Enable Very High Thoughtput mode
-    --vht_capab <VHT>       VHT capabilities
-    --vht_channel_width <index> 
-                            Index of VHT Channel Width:
+    --require-vht           Require station VHT (Very High Thoughtput) mode
+    --vht-capab <VHT>       VHT capabilities
+    
+    --vht-channel-width <index> 
+                            Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
                                 2 for 160MHz
                                 3 for 80+80MHz (Non-contigous 160MHz)    
-    --seg0_center_freq_idx <channel>
-                            Channel index of Center frequency for primary segment, use with --vht_channel_width
-    --seg1_center_freq_idx <channel>
-                            Channel index of Center frequency for secondary (second 80MHz) segment, use with --vht_channel_width=3
-                            Pick above 2 values from the F0 index column from the 5GHz table in https://en.wikipedia.org/wiki/List_of_WLAN_channels#5_GHz_(802.11a/h/n/ac/ax)
+    --vht-seg0-channel <channel>
+                            Channel index of VHT center frequency for primary 
+                            segment, use with --vht-channel-width
+    --vht-seg1-channel <channel>
+                            Channel index of VHT center frequency for secondary 
+                            (second 80MHz) segment, 
+                            use with '--vht-channel-width 3' .
 
   Instance managing:
     --daemon                Run in background
@@ -410,7 +413,7 @@ parse_user_options(){
                 shift
                 IEEE80211N=1
                 ;;
-            --use_ht)
+            --require-ht)
                 shift
                 REQUIREHT=1
                 ;;
@@ -418,31 +421,31 @@ parse_user_options(){
                 shift
                 IEEE80211AC=1
                 ;;
-            --use_vht)
+            --require-vht)
                 shift
                 REQUIREVHT=1
                 ;;
-            --ht_capab)
+            --ht-capab)
                 shift
                 HT_CAPAB="$1"
                 shift
                 ;;
-            --vht_capab)
+            --vht-capab)
                 shift
                 VHT_CAPAB="$1"
                 shift
                 ;;
-            --vht_channel_width)
+            --vht-channel-width)
                 shift
                 VHTCHANNELWIDTH="$1"
                 shift
                 ;;
-            --seg0_center_freq_idx)
+            --vht-seg0-channel)
                 shift
                 VHTSEG0CHINDEX="$1"
                 shift
                 ;;
-            --seg1_center_freq_idx)
+            --vht-seg1-channel)
                 shift
                 VHTSEG1CHINDEX="$1"
                 shift
