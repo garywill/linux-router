@@ -6,7 +6,6 @@ It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one co
 
 [Linux-Router News & Developer Notes 📰](https://github.com/garywill/linux-router/issues/28) | [More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
-> [Read this readme in web doc reader](https://garywill.github.io/proj-doc/linux-router/) ( also available in 中文, Español, Русский язык ... )
 
 ## Features
 
@@ -369,7 +368,7 @@ Options:
                             Using this you can't use same wlan interface
                             for both Internet and AP
     --virt-name <name>      Set name of virtual interface
-    -c <channel>            Channel number (default: 1)
+    -c <channel>            Specify channel (default: use current one, or 1 / 36)
     --country <code>        Set two-letter country code for regularity
                             (example: US)
     --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
@@ -383,13 +382,32 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-    
-    --ieee80211n            Enable IEEE 802.11n (HT)
-    --ieee80211ac           Enable IEEE 802.11ac (VHT)
-    --ht_capab <HT>         HT capabilities (default: [HT40+])
-    --vht_capab <VHT>       VHT capabilities
-    
     --no-haveged            Do not run haveged automatically when needed
+    --hs20                  Enable Hotspot 2.0 (Make sure your hostapd build supports it)
+
+    WiFi 4 (802.11n) configs:
+    --ieee80211n            Enable IEEE 802.11n (HT)
+    --require-ht            Require station HT (High Throughput) mode
+    --ht-capab <HT>         HT capabilities (default: [HT40+])
+
+    WiFi 5 (802.11ac) configs:
+    --ieee80211ac           Enable IEEE 802.11ac (VHT)
+    --require-vht           Require station VHT (Very High Thoughtput) mode
+    --vht-capab <VHT>       VHT capabilities
+    
+    --vht-channel-width <index> 
+                            Index of VHT channel width:
+                                0 for 20MHz or 40MHz (default)
+                                1 for 80MHz
+                                2 for 160MHz
+                                3 for 80+80MHz (Non-contigous 160MHz)    
+    --vht-seg0-channel <channel>
+                            Channel index of VHT center frequency for primary 
+                            segment, use with --vht-channel-width
+    --vht-seg1-channel <channel>
+                            Channel index of VHT center frequency for secondary 
+                            (second 80MHz) segment, 
+                            use with '--vht-channel-width 3' .
 
   Instance managing:
     --daemon                Run in background
@@ -401,6 +419,12 @@ Options:
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
+
+    Notice 1:   This script assume your host's default policy won't forward
+                packets, so the script won't explictly ban forwarding in any
+                mode. In some unexpected case (eg. mistaken configurations) may
+                cause unwanted packets leakage between 2 networks, which you
+                should be aware of if you want isolated network
 ```
 
 </details>

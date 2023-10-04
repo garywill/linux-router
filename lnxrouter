@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.6.7
+VERSION=0.7.0b
 PROGNAME="$(basename $0)"
 
 export LC_ALL=C
@@ -1558,7 +1558,7 @@ daemonizing_check(){
 check_wifi_settings() {
 
     if ! ( which iw > /dev/null 2>&1 && iw dev $WIFI_IFACE info > /dev/null 2>&1 ); then
-        echo "WARN: Can't use 'iw' to operate interfce '$WIFI_IFACE', trying 'iwconfig' (not as good as 'iw') ..." >&2
+        echo "WARN: Can't use 'iw' to operate interfce '$WIFI_IFACE', trying 'iwconfig' (not as good as 'iw') ... (Did you spell the interface name right?)" >&2
         USE_IWCONFIG=1
     fi
     
