@@ -88,7 +88,7 @@ Options:
                             Using this you can't use same wlan interface
                             for both Internet and AP
     --virt-name <name>      Set name of virtual interface
-    -c <channel>            Specify channel (default: use current one, or 1 / 36)
+    -c <channel>            Specify channel (default: use current, or 1 / 36)
     --country <code>        Set two-letter country code for regularity
                             (example: US)
     --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
@@ -103,31 +103,27 @@ Options:
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
     --no-haveged            Do not run haveged automatically when needed
-    --hs20                  Enable Hotspot 2.0 (Make sure your hostapd build supports it)
+    --hs20                  Enable Hotspot 2.0
 
     WiFi 4 (802.11n) configs:
-    --ieee80211n            Enable IEEE 802.11n (HT)
-    --require-ht            Require station HT (High Throughput) mode
-    --ht-capab <HT>         HT capabilities (default: [HT40+])
+    --wifi4                 Enable IEEE 802.11n (HT)
+    --req-ht                Require station HT (High Throughput) mode
+    --ht-capab <HT caps>    HT capabilities (default: [HT40+])
 
     WiFi 5 (802.11ac) configs:
-    --ieee80211ac           Enable IEEE 802.11ac (VHT)
-    --require-vht           Require station VHT (Very High Thoughtput) mode
-    --vht-capab <VHT>       VHT capabilities
+    --wifi5                 Enable IEEE 802.11ac (VHT)
+    --req-vht               Require station VHT (Very High Thoughtput) mode
+    --vht-capab <VHT caps>  VHT capabilities
     
-    --vht-channel-width <index> 
-                            Index of VHT channel width:
+    --vht-ch-width <index>  Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
                                 2 for 160MHz
                                 3 for 80+80MHz (Non-contigous 160MHz)    
-    --vht-seg0-channel <channel>
-                            Channel index of VHT center frequency for primary 
-                            segment, use with --vht-channel-width
-    --vht-seg1-channel <channel>
-                            Channel index of VHT center frequency for secondary 
-                            (second 80MHz) segment, 
-                            use with '--vht-channel-width 3' .
+    --vht-seg0-ch <channel> Channel index of VHT center frequency for primary 
+                            segment. Use with '--vht-ch-width'
+    --vht-seg1-ch <channel> Channel index of VHT center frequency for secondary
+                            (second 80MHz) segment. Use with '--vht-ch-width 3'
 
   Instance managing:
     --daemon                Run in background
@@ -409,19 +405,19 @@ parse_user_options(){
                 shift
                 ;;
 
-            --ieee80211n)
+            --wifi4|--ieee80211n)
                 shift
                 IEEE80211N=1
                 ;;
-            --require-ht)
+            --req-ht|--require-ht)
                 shift
                 REQUIREHT=1
                 ;;
-            --ieee80211ac)
+            --wifi5|--ieee80211ac)
                 shift
                 IEEE80211AC=1
                 ;;
-            --require-vht)
+            --req-vht|--require-vht)
                 shift
                 REQUIREVHT=1
                 ;;
@@ -435,17 +431,17 @@ parse_user_options(){
                 VHT_CAPAB="$1"
                 shift
                 ;;
-            --vht-channel-width)
+            --vht-ch-width|--vht-channel-width)
                 shift
                 VHTCHANNELWIDTH="$1"
                 shift
                 ;;
-            --vht-seg0-channel)
+            --vht-seg0-ch|--vht-seg0-channel)
                 shift
                 VHTSEG0CHINDEX="$1"
                 shift
                 ;;
-            --vht-seg1-channel)
+            --vht-seg1-ch|--vht-seg1-channel)
                 shift
                 VHTSEG1CHINDEX="$1"
                 shift
