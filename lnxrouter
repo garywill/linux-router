@@ -1865,7 +1865,6 @@ write_hostapd_conf() {
     else
         echo "WARN: WiFi is not protected by password" >&2
     fi
-    echo "Config for current session is $CONFDIR/hostapd.conf" # Useful for sharing with other hostapd users.
     chmod 600 "$CONFDIR/hostapd.conf"
 }
 
