@@ -66,13 +66,13 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 
 1-file-script. Release on [Linux-router repo on Github](https://github.com/garywill/linux-router). Just download and run the bash script (meet the dependencies). In this case use without installation.
 
-> I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here:
+> I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here
 
 | Linux distro |                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------- |
 | Any          | download [1-file-script](https://raw.githubusercontent.com/garywill/linux-router/master/lnxrouter) and run without installation |
 
-## Dependencies
+### Dependencies
 
 - bash
 - procps or procps-ng
@@ -368,7 +368,7 @@ Options:
                             Using this you can't use same wlan interface
                             for both Internet and AP
     --virt-name <name>      Set name of virtual interface
-    -c <channel>            Specify channel (default: use current one, or 1 / 36)
+    -c <channel>            Specify channel (default: use current, or 1 / 36)
     --country <code>        Set two-letter country code for regularity
                             (example: US)
     --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
@@ -383,31 +383,27 @@ Options:
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
     --no-haveged            Do not run haveged automatically when needed
-    --hs20                  Enable Hotspot 2.0 (Make sure your hostapd build supports it)
+    --hs20                  Enable Hotspot 2.0
 
     WiFi 4 (802.11n) configs:
-    --ieee80211n            Enable IEEE 802.11n (HT)
-    --require-ht            Require station HT (High Throughput) mode
-    --ht-capab <HT>         HT capabilities (default: [HT40+])
+    --wifi4                 Enable IEEE 802.11n (HT)
+    --req-ht                Require station HT (High Throughput) mode
+    --ht-capab <HT caps>    HT capabilities (default: [HT40+])
 
     WiFi 5 (802.11ac) configs:
-    --ieee80211ac           Enable IEEE 802.11ac (VHT)
-    --require-vht           Require station VHT (Very High Thoughtput) mode
-    --vht-capab <VHT>       VHT capabilities
+    --wifi5                 Enable IEEE 802.11ac (VHT)
+    --req-vht               Require station VHT (Very High Thoughtput) mode
+    --vht-capab <VHT caps>  VHT capabilities
     
-    --vht-channel-width <index> 
-                            Index of VHT channel width:
+    --vht-ch-width <index>  Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
                                 2 for 160MHz
                                 3 for 80+80MHz (Non-contigous 160MHz)    
-    --vht-seg0-channel <channel>
-                            Channel index of VHT center frequency for primary 
-                            segment, use with --vht-channel-width
-    --vht-seg1-channel <channel>
-                            Channel index of VHT center frequency for secondary 
-                            (second 80MHz) segment, 
-                            use with '--vht-channel-width 3' .
+    --vht-seg0-ch <channel> Channel index of VHT center frequency for primary 
+                            segment. Use with '--vht-ch-width'
+    --vht-seg1-ch <channel> Channel index of VHT center frequency for secondary
+                            (second 80MHz) segment. Use with '--vht-ch-width 3'
 
   Instance managing:
     --daemon                Run in background
@@ -420,20 +416,6 @@ Options:
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
 
-    Notice 1:   This script assume your host's default policy won't forward
-                packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case (eg. mistaken configurations) may
-                cause unwanted packets leakage between 2 networks, which you
-                should be aware of if you want isolated network
-```
-
-</details>
-
-## Notice
-
-<details>
-
-```
     Notice 1:   This script assume your host's default policy won't forward
                 packets, so the script won't explictly ban forwarding in any
                 mode. In some unexpected case (eg. mistaken configurations) may
@@ -469,6 +451,20 @@ Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and
 - 🍃 There're some TO-DOs listed, in both [readme TODO](#todo) and [in the code file](https://github.com/garywill/linux-router/search?q=TODO&type=code)
 - 🍃 Also some [unfulfilled enhancements in the Issues](https://github.com/garywill/linux-router/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement)
 - 🙋‍♂️ Contributions are not limited to coding. There're [some posts and questions](https://github.com/garywill/linux-router/issues) that need more people to answer
+
+## Notice
+
+<details>
+
+```
+    Notice 1:   This script assume your host's default policy won't forward
+                packets, so the script won't explictly ban forwarding in any
+                mode. In some unexpected case (eg. mistaken configurations) may
+                cause unwanted packets leakage between 2 networks, which you
+                should be aware of if you want isolated network
+```
+
+</details>
 
 ## TODO
 
