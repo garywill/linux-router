@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.7.1b
+VERSION=0.7.1
 PROGNAME="$(basename $0)"
 
 export LC_ALL=C
@@ -1990,7 +1990,7 @@ run_wifi_ap_processes() {
     #    sleep 1
     #done
     #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
-    pid_watchdog $HOSTAPD_PID 10 "hostapd failed" &
+    pid_watchdog $HOSTAPD_PID 10 "hostapd failed. (tip: try '--hostapd-debug' to get some debug info)" &
     sleep 3
 }
 
