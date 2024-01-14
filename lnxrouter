@@ -698,22 +698,31 @@ get_interface_pci_info() {  # pci id / model / virtual
     local pci_id
     local pci_full
     
+    local pci_path
+    local driver
+    
     device_path="$(readlink -f /sys/class/net/$1)"
+    pci_path=$device_path/../..
     
     if [[ "$device_path" == "/sys/devices/pci"* ]]; then
         pci_id="$(echo "$device_path" | sed 's/\//\n/g' | tail -n 3 |sed -n 1p)"
         
         if which lspci >/dev/null 2>&1 ; then
-            pci_full="$( lspci -D -nn | grep -E "^$pci_id " )"
-            echo "  PCI: $pci_full"
+            pci_full="$( lspci -D -nn -s "$pci_id" )"
+            echo -n "  PCI: $pci_full"
         else
-            echo "  PCI: $pci_id"
+            echo -n "  PCI: $pci_id"
         fi
     elif [[ "$device_path" == *"/virtual/"* ]]; then
         echo "  virtual interface"
     fi
+    
+    if [[ -d "$pci_path/driver" ]] ; then
+        driver=$(readlink -f "$pci_path/driver" | sed 's/\//\n/g' | tail -n 1)
+        echo -n "    System-already-loaded driver: $driver"
+    fi
+    echo ""
     # TODO usb
-    # TODO current driver
 }
 
 alloc_new_vface_name() { # only for wifi
