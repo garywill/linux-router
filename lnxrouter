@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VERSION=0.7.1
-PROGNAME="$(basename $0)"
+PROGNAME="$(basename "$0")"
 
 export LC_ALL=C
 
@@ -477,9 +477,9 @@ parse_user_options(){
                 ;;
             --hostapd-debug)
                 shift
-                if [ "x$1" = "x1" ]; then
+                if [ "$1" = "1" ]; then
                     HOSTAPD_DEBUG_ARGS="-d"
-                elif [ "x$1" = "x2" ]; then
+                elif [ "$1" = "2" ]; then
                     HOSTAPD_DEBUG_ARGS="-dd"
                 else
                     printf "Error: argument for --hostapd-debug expected 1 or 2, got %s\n" "$1"
@@ -536,8 +536,8 @@ sep_ip_port() {
     if (echo "$INPUT" | grep '\.' >/dev/null 2>&1) ;then  
         if (echo "$INPUT" | grep ':' >/dev/null 2>&1) ;then
             # ipv4 + port
-            IP="$(echo $INPUT | cut -d: -f1)"
-            PORT="$(echo $INPUT | cut -d: -f2)"
+            IP="$(echo "$INPUT" | cut -d: -f1)"
+            PORT="$(echo "$INPUT" | cut -d: -f2)"
         else
             # ipv4
             IP="$INPUT"
@@ -545,11 +545,11 @@ sep_ip_port() {
     elif (echo "$INPUT" | grep '\]' >/dev/null 2>&1) ;then 
         if (echo "$INPUT" | grep '\]\:' >/dev/null 2>&1) ;then
             # ipv6 + port
-            IP="$(echo $INPUT | cut -d']' -f1 | cut -d'[' -f2)"
-            PORT="$(echo $INPUT | cut -d']' -f2 |cut -d: -f2)"
+            IP="$(echo "$INPUT" | cut -d']' -f1 | cut -d'[' -f2)"
+            PORT="$(echo "$INPUT" | cut -d']' -f2 |cut -d: -f2)"
         else
             # ipv6
-            IP="$(echo $INPUT | cut -d']' -f1 | cut -d'[' -f2)"
+            IP="$(echo "$INPUT" | cut -d']' -f1 | cut -d'[' -f2)"
         fi
     else 
         # port
@@ -578,10 +578,10 @@ get_interface_phy_device() { # only for wifi interface
             echo "$1"
             return 0
         elif [[ -e "$x/device/net/$1" ]]; then
-            echo ${x##*/}
+            echo "${x##*/}"
             return 0
         elif [[ -e "$x/device/net:$1" ]]; then
-            echo ${x##*/}
+            echo "${x##*/}"
             return 0
         fi
     done
@@ -593,13 +593,13 @@ get_adapter_info() { # only for wifi interface
     local iPHY
     iPHY=$(get_interface_phy_device "$1")
     [[ $? -ne 0 ]] && return 1
-    iw phy $iPHY info
+    iw phy "$iPHY" info
 }
 
 get_adapter_kernel_module() {
     local MODULE
     MODULE=$(readlink -f "/sys/class/net/$1/device/driver/module")
-    echo ${MODULE##*/}
+    echo "${MODULE##*/}"
 }
 
 can_be_sta_and_ap() {
@@ -631,9 +631,9 @@ can_transmit_to_channel() {
 
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         if [[ $FREQ_BAND == 2.4 ]]; then
-            CHANNEL_INFO=$(get_adapter_info ${IFACE} | grep " 24[0-9][0-9] MHz \[${CHANNEL_NUM}\]")
+            CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep " 24[0-9][0-9] MHz \[${CHANNEL_NUM}\]")
         else
-            CHANNEL_INFO=$(get_adapter_info ${IFACE} | grep " \(49[0-9][0-9]\|5[0-9]\{3\}\) MHz \[${CHANNEL_NUM}\]")
+            CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep " \(49[0-9][0-9]\|5[0-9]\{3\}\) MHz \[${CHANNEL_NUM}\]")
         fi
         [[ -z "${CHANNEL_INFO}" ]] && return 1
         [[ "${CHANNEL_INFO}" == *no\ IR* ]] && return 1
@@ -641,7 +641,7 @@ can_transmit_to_channel() {
         return 0
     else
         CHANNEL_NUM=$(printf '%02d' ${CHANNEL_NUM})
-        CHANNEL_INFO=$(iwlist ${IFACE} channel | grep -E "Channel[[:blank:]]${CHANNEL_NUM}[[:blank:]]?:")
+        CHANNEL_INFO=$(iwlist "${IFACE}" channel | grep -E "Channel[[:blank:]]${CHANNEL_NUM}[[:blank:]]?:")
         [[ -z "${CHANNEL_INFO}" ]] && return 1
         return 0
     fi
@@ -701,7 +701,7 @@ get_interface_pci_info() {  # pci id / model / virtual
     device_path="$(readlink -f /sys/class/net/$1)"
     
     if [[ "$device_path" == "/sys/devices/pci"* ]]; then
-        pci_id="$(echo $device_path | sed 's/\//\n/g' | tail -n 3 |sed -n 1p)"
+        pci_id="$(echo "$device_path" | sed 's/\//\n/g' | tail -n 3 |sed -n 1p)"
         
         if which lspci >/dev/null 2>&1 ; then
             pci_full="$( lspci -D -nn | grep -E "^$pci_id " )"
@@ -723,16 +723,16 @@ alloc_new_vface_name() { # only for wifi
         while :; do
             v_iface_name="x$i${WIFI_IFACE}"
             i=$((i + 1))
-            is_vface_name_allocated ${v_iface_name} || break
+            is_vface_name_allocated "${v_iface_name}" || break
         done
     fi
-    mkdir -p $COMMON_CONFDIR/vfaces
-    touch $COMMON_CONFDIR/vfaces/${v_iface_name}
+    mkdir -p "$COMMON_CONFDIR/vfaces"
+    touch "$COMMON_CONFDIR/vfaces/${v_iface_name}"
     echo "${v_iface_name}"
 }
 
 dealloc_vface_name() {
-    rm -f $COMMON_CONFDIR/vfaces/$1
+    rm -f "$COMMON_CONFDIR/vfaces/$1"
 }
 
 #======
@@ -765,10 +765,10 @@ generate_random_mac() {
         r5=$( printf "%02x" $(($RANDOM%256)) )
         r6=$( printf "%02x" $(($RANDOM%256)) )
         RAND_MAC="$r1:$r2:$r3:$r4:$r5:$r6"
-        ( ! ip link | grep "link" | grep $RAND_MAC > /dev/null 2>&1 ) && \
-        ( ! ip maddress | grep "link" | grep $RAND_MAC > /dev/null 2>&1 ) && \
+        ( ! ip link | grep "link" | grep "$RAND_MAC" > /dev/null 2>&1 ) && \
+        ( ! ip maddress | grep "link" | grep "$RAND_MAC" > /dev/null 2>&1 ) && \
         ( ! ip neigh | grep "lladdr $RAND_MAC" > /dev/null 2>&1 ) && \
-        ( ! get_all_mac_in_system | grep $RAND_MAC ) && \
+        ( ! get_all_mac_in_system | grep "$RAND_MAC" ) && \
         break
     done
     echo "$RAND_MAC"
@@ -808,7 +808,7 @@ generate_random_lan_ip6_prefix() {
         r5=$( printf "%x" $(($RANDOM%240+16)) )
         r6=$( printf "%x" $(($RANDOM%240+16)) )
         r7=$( printf "%x" $(($RANDOM%240+16)) )
-        is_ip6_lan_range_available $r1 $r2 $r3 $r4 $r5 $r6 $r7 && break
+        is_ip6_lan_range_available "$r1" "$r2" "$r3" "$r4" "$r5" "$r6" "$r7" && break
     done
     echo "fd$r1:$r2$r3:$r4$r5:$r6$r7::"
 }
@@ -844,7 +844,7 @@ pid_watchdog() {
         if [[ -e "/proc/$PID" ]]; then
             ST="$(cat "/proc/$PID/status" | grep "^State:" | awk '{print $2}')"
             if [[ "$ST" != 'Z' ]]; then
-                sleep $SLEEP
+                sleep "$SLEEP"
                 continue
             fi
         fi
@@ -865,35 +865,35 @@ is_nm_running() {
 }
 
 nm_knows() {
-    (nmcli dev show $1 | grep -E "^GENERAL.STATE:" >/dev/null 2>&1 ) && return 0 # nm sees
+    (nmcli dev show "$1" | grep -E "^GENERAL.STATE:" >/dev/null 2>&1 ) && return 0 # nm sees
     return 1 # nm doesn't see this interface
 }
 nm_get_manage() { # get an interface's managed state
     local s
-    s=$(nmcli dev show $1 | grep -E "^GENERAL.STATE:") || return 2 # no such interface
-    (echo $s | grep "unmanaged" >/dev/null 2>&1) && return 1 # unmanaged
+    s=$(nmcli dev show "$1" | grep -E "^GENERAL.STATE:") || return 2 # no such interface
+    (echo "$s" | grep "unmanaged" >/dev/null 2>&1) && return 1 # unmanaged
     return 0 # managed
 }
 nm_set_unmanaged() {
-    while ! nm_knows $1 ; do # wait for virtual wifi interface seen by NM
+    while ! nm_knows "$1" ; do # wait for virtual wifi interface seen by NM
         sleep 0.5
     done
-    if nm_get_manage $1 ;then
+    if nm_get_manage "$1" ;then
         echo "Set $1 unmanaged by NetworkManager"
-        nmcli dev set $1 managed no || die "Failed to set $1 unmanaged by NetworkManager"
+        nmcli dev set "$1" managed no || die "Failed to set $1 unmanaged by NetworkManager"
         NM_UNM_LIST=$1
         sleep 1
     fi
 }
 
 nm_set_managed() {
-    nmcli dev set $1 managed yes
+    nmcli dev set "$1" managed yes
     NM_UNM_LIST=
 }
 nm_restore_manage() {
     if [[ $NM_UNM_LIST ]]; then
         echo "Restore $NM_UNM_LIST managed by NetworkManager"
-        nm_set_managed $NM_UNM_LIST
+        nm_set_managed "$NM_UNM_LIST"
         sleep 0.5
     fi
 }
@@ -1161,18 +1161,18 @@ set_interface_mac() {
     INTERFACE=$1
     MAC=$2
     
-    ip link set dev ${INTERFACE} address ${MAC} 
+    ip link set dev "${INTERFACE}" address "${MAC}" 
 }
 
 backup_interface_status() {
     # virtual wifi interface will be destroyed, so no need to save status
     
     # backup interface up or down status
-    (ip link show ${SUBNET_IFACE} |grep -q "state UP") && SUBNET_IFACE_ORIGINAL_UP_STATUS=1
+    (ip link show "${SUBNET_IFACE}" |grep -q "state UP") && SUBNET_IFACE_ORIGINAL_UP_STATUS=1
     
     # save interface old mac 
     #if [[ -n "$NEW_MACADDR" ]]; then 
-        OLD_MACADDR=$(get_interface_mac $SUBNET_IFACE)
+        OLD_MACADDR=$(get_interface_mac "$SUBNET_IFACE")
         #echo "Saved ${SUBNET_IFACE} old MAC address ${OLD_MACADDR} into RAM"
     #fi
     
@@ -1189,14 +1189,14 @@ restore_interface_status() {
     
     restore_ipv6_bits
 
-    if [[ -n "$OLD_MACADDR" && "$(get_interface_mac $SUBNET_IFACE)" != "$OLD_MACADDR" ]] ; then
+    if [[ -n "$OLD_MACADDR" && "$(get_interface_mac "$SUBNET_IFACE")" != "$OLD_MACADDR" ]] ; then
         echo "Restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR} ..."
-        set_interface_mac ${SUBNET_IFACE} ${OLD_MACADDR} || echo "Failed restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}" >&2
+        set_interface_mac "${SUBNET_IFACE}" "${OLD_MACADDR}" || echo "Failed restoring ${SUBNET_IFACE} to old MAC address ${OLD_MACADDR}" >&2
     fi
     
     nm_restore_manage
     
-    [[ $SUBNET_IFACE_ORIGINAL_UP_STATUS -eq 1 ]] && ip link set up dev ${SUBNET_IFACE} && echo "Restore ${SUBNET_IFACE} to link up"
+    [[ $SUBNET_IFACE_ORIGINAL_UP_STATUS -eq 1 ]] && ip link set up dev "${SUBNET_IFACE}" && echo "Restore ${SUBNET_IFACE} to link up"
 }
 #---------------------------------------
 
@@ -1207,11 +1207,11 @@ kill_processes() { # for this instance
         # even if the $CONFDIR is empty, the for loop will assign
         # a value in $x. so we need to check if the value is a file
         if [[ -f $x ]] &&  sleep 0.3  && [[ -f $x ]]; then
-            pid=$(cat $x)
-            pn=$( ps -p $pid -o comm= ) 
+            pid=$(cat "$x")
+            pn=$( ps -p "$pid" -o comm= ) 
             #echo "Killing $pid $pn ... "
-            pkill -P $pid
-            kill $pid 2>/dev/null && ( echo "Killed $(basename $x) $pid $pn" && rm $x ) || echo "Failed to kill $(basename $x) $pid $pn, it may have exited"
+            pkill -P "$pid"
+            kill "$pid" 2>/dev/null && ( echo "Killed $(basename "$x") $pid $pn" && rm "$x" ) || echo "Failed to kill $(basename "$x") $pid $pn, it may have exited"
         fi
     done
 }
@@ -1219,15 +1219,15 @@ kill_processes() { # for this instance
 _cleanup() {
     local x
 
-    ip addr flush ${SUBNET_IFACE}
+    ip addr flush "${SUBNET_IFACE}"
     
-    rm -rf $CONFDIR
+    rm -rf "$CONFDIR"
     
-    ip link set down dev ${SUBNET_IFACE}
+    ip link set down dev "${SUBNET_IFACE}"
     
     if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
-        iw dev ${VWIFI_IFACE} del
-        dealloc_vface_name $VWIFI_IFACE
+        iw dev "${VWIFI_IFACE}" del
+        dealloc_vface_name "$VWIFI_IFACE"
     fi
     
     restore_interface_status
@@ -1236,12 +1236,12 @@ _cleanup() {
         echo "Exiting: This is the only running instance"
         # kill common processes
         for x in $COMMON_CONFDIR/*.pid; do
-            [[ -f $x ]] && kill -9 $(cat $x) && rm $x
+            [[ -f $x ]] && kill -9 $(cat "$x") && rm "$x"
         done
         
-        rm -d $COMMON_CONFDIR/vfaces
-        rm -d $COMMON_CONFDIR
-        rm -d $TMPDIR
+        rm -d "$COMMON_CONFDIR/vfaces"
+        rm -d "$COMMON_CONFDIR"
+        rm -d "$TMPDIR"
     else
         echo "Exiting: This is NOT the only running instance"
     fi
@@ -1323,7 +1323,7 @@ list_running() {
         IFACE=${IFACE%%.*}
         subn_iface=$(cat $x/subn_iface)
 
-        if [[ $IFACE == $subn_iface ]]; then
+        if [[ "$IFACE" == "$subn_iface" ]]; then
             echo $(cat $x/pid) $IFACE
         else
             echo $(cat $x/pid) $IFACE '('$(cat $x/subn_iface)')'
@@ -1360,7 +1360,7 @@ print_clients_from_leases() {  # MAC|IP|HOST|lease
     FILEC="$(cat "$LEASE_FILE" | grep -v -E "^duid\b" | sed -r '/^\s*$/d' )"
 
     # TODO: duid is somewhat related to ipv6. I don't know about it. Not sure excluding it miss some info or not
-    echo "$FILEC" | while read line
+    echo "$FILEC" | while read -r line
     do
         #echo aa$line
         LEASEstamp="$(echo "$line" | awk '{print $1}')"
@@ -1381,20 +1381,20 @@ print_interface_neighbors_via_iproute() {  # MAC|IP|_|STATUS
     
     local line
     
-    ip n | grep -E "\bdev $IFACE\b" | sed 's/ /|/g' | while read line
+    ip n | grep -E "\bdev $IFACE\b" | sed 's/ /|/g' | while read -r line
     do
         local MAC IP STATUS
         
-        IP="$(echo $line | awk -F'|' '{print $1}')"
+        IP="$(echo "$line" | awk -F'|' '{print $1}')"
         
-        if [[ "$(echo $line | awk -F'|' '{print $4}')" == "lladdr" ]]; then # has mac
+        if [[ "$(echo "$line" | awk -F'|' '{print $4}')" == "lladdr" ]]; then # has mac
             # if has mac, $4="lladdr" and $5=macaddress and $6+=status
-            MAC="$(echo $line | awk -F'|' '{print $5}')"
-            STATUS="$(echo $line | awk -F'|' '$1="";$2="";$3="";$4="";$5="";{print}' | awk '{$1=$1;print}'| sed 's/ /,/g')"
+            MAC="$(echo "$line" | awk -F'|' '{print $5}')"
+            STATUS="$(echo "$line" | awk -F'|' '$1="";$2="";$3="";$4="";$5="";{print}' | awk '{$1=$1;print}'| sed 's/ /,/g')"
         else # no mac 
             # if no mac, $4="" and $5+=status
             MAC="?"
-            STATUS="$(echo $line | awk -F'|' '$1="";$2="";$3="";$4="";{print}' | awk '{$1=$1;print}' | sed 's/ /,/g')"
+            STATUS="$(echo "$line" | awk -F'|' '$1="";$2="";$3="";$4="";{print}' | awk '{$1=$1;print}' | sed 's/ /,/g')"
         fi
         if [[ -n "$IP" && ( "$MAC" != "?" || "$STATUS" != "FAILED" ) ]]; then
             echo "$MAC|$IP|?|$STATUS"
@@ -1404,10 +1404,10 @@ print_interface_neighbors_via_iproute() {  # MAC|IP|_|STATUS
 print_interface_neighbors_via_iw() {  # MAC|_|_|signal  
     local IFACE=$1
     local MAC SIGNAL
-    iw dev $IFACE station dump | awk '($1 ~ /Station$/) {print $2}' | while read MAC
+    iw dev "$IFACE" station dump | awk '($1 ~ /Station$/) {print $2}' | while read -r MAC
     do
         if [[ -n "$MAC" ]]; then
-            SIGNAL="$(iw dev $IFACE station get $MAC | grep "signal:" | awk '{print $2}')"
+            SIGNAL="$(iw dev "$IFACE" station get "$MAC" | grep "signal:" | awk '{print $2}')"
             echo "${MAC}|?|?|${SIGNAL}_dBm"
         fi
     done
@@ -1428,7 +1428,7 @@ list_clients() { # passive mode. (use 'arp-scan' or 'netdiscover' if want active
         fi
     else # non-number given
         IFACE="$1"
-        if ( ! is_interface $IFACE ) ; then
+        if ( ! is_interface "$IFACE" ) ; then
             echo "'$IFACE' is not an interface or PID" >&2
             exit 1
         fi
@@ -1440,18 +1440,18 @@ list_clients() { # passive mode. (use 'arp-scan' or 'netdiscover' if want active
             echo "Tip: '$IFACE' is not an interface hosted by $PROGNAME" >&2
         fi
     fi
-    output="$(echo "$output" ; print_interface_neighbors_via_iw $IFACE) "
-    output="$(echo "$output" ; print_interface_neighbors_via_iproute $IFACE)"
+    output="$(echo "$output" ; print_interface_neighbors_via_iw "$IFACE") "
+    output="$(echo "$output" ; print_interface_neighbors_via_iproute "$IFACE")"
     
     output="$(echo "$output" | sort -k 1 -k 2 -t '|' | uniq | sed -r '/^\s*$/d')"
 
-    echo "$IFACE ($(get_interface_mac $IFACE)) neighbors:"
+    echo "$IFACE ($(get_interface_mac "$IFACE")) neighbors:"
     
     local fmt="%-19s%-41s%-20s%s" # string length: MAC 17, ipv4 15, ipv6 39, hostname ?
     printf "$fmt\n"  "MAC" "IP" "HOSTNAME" "INFO"
     
     local line
-    echo "$output"| while read line
+    echo "$output"| while read -r line
     do
         if [[ -n "$line" ]]; then
             echo "$line" | awk -F'|' "{printf \"$fmt\n\",\$1,\$2,\$3,\$4}"
@@ -1483,14 +1483,14 @@ send_stop() {
     local x
 
     # send stop signal to specific pid
-    if is_running_pid $1; then
-        kill -USR1 $1
+    if is_running_pid "$1"; then
+        kill -USR1 "$1"
         return
     fi
 
     # send stop signal to specific interface
     for x in $(list_running | grep -E " \(?${1}( |\)?\$)" | cut -f1 -d' '); do
-        kill -USR1 $x
+        kill -USR1 "$x"
     done
 }
 
@@ -1553,13 +1553,13 @@ daemonizing_check(){
 #============================
 check_wifi_settings() {
 
-    if ! ( which iw > /dev/null 2>&1 && iw dev $WIFI_IFACE info > /dev/null 2>&1 ); then
+    if ! ( which iw > /dev/null 2>&1 && iw dev "$WIFI_IFACE" info > /dev/null 2>&1 ); then
         echo "WARN: Can't use 'iw' to operate interfce '$WIFI_IFACE', trying 'iwconfig' (not as good as 'iw') ... (Did you spell the interface name right?)" >&2
         USE_IWCONFIG=1
     fi
     
     if [[ $USE_IWCONFIG -eq 1 ]]; then
-        if ! (which iwconfig > /dev/null 2>&1 && iwconfig $WIFI_IFACE > /dev/null 2>&1); then
+        if ! (which iwconfig > /dev/null 2>&1 && iwconfig "$WIFI_IFACE" > /dev/null 2>&1); then
             echo "ERROR: Can't use 'iwconfig' to operate interfce '$WIFI_IFACE'" >&2
             exit 1
         fi
@@ -1575,13 +1575,13 @@ check_wifi_settings() {
         FREQ_BAND=5
     fi
 
-    if ! can_be_ap ${WIFI_IFACE}; then
+    if ! can_be_ap "${WIFI_IFACE}"; then
         echo "ERROR: Your adapter does not support AP (master) mode" >&2
         exit 1
     fi
 
-    if ! can_be_sta_and_ap ${WIFI_IFACE}; then
-        if is_interface_wifi_connected ${WIFI_IFACE}; then
+    if ! can_be_sta_and_ap "${WIFI_IFACE}"; then
+        if is_interface_wifi_connected "${WIFI_IFACE}"; then
             echo "ERROR: Your adapter can not be a station (i.e. be connected) and an AP at the same time" >&2
             exit 1
         elif [[ $NO_VIRT -eq 0 ]]; then
@@ -1592,7 +1592,7 @@ check_wifi_settings() {
 
     HOSTAPD=$(which hostapd)
 
-    if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^(8192[cd][ue]|8723a[sue])$ ]]; then
+    if [[ $(get_adapter_kernel_module "${WIFI_IFACE}") =~ ^(8192[cd][ue]|8723a[sue])$ ]]; then
         if ! strings "$HOSTAPD" | grep -m1 rtl871xdrv > /dev/null 2>&1; then
             echo "ERROR: You need to patch your hostapd with rtl871xdrv patches." >&2
             exit 1
@@ -1619,7 +1619,7 @@ check_wifi_settings() {
         exit 1
     fi
 
-    if [[ $(get_adapter_kernel_module ${WIFI_IFACE}) =~ ^rtl[0-9].*$ ]]; then
+    if [[ $(get_adapter_kernel_module "${WIFI_IFACE}") =~ ^rtl[0-9].*$ ]]; then
         if [[ $WPA_VERSION == '1' || $WPA_VERSION == '1+2' ]]; then
             echo "WARN: Realtek drivers usually have problems with WPA1, WPA2 is recommended" >&2
         fi
@@ -1634,7 +1634,7 @@ check_wifi_settings() {
         echo "WARN: option --virt-name $VIRT_NAME has ${#VIRT_NAME} characters which might be too long, consider making it shorter in case of errors" >&2
     fi
 
-    if [[ ! -z $VIRT_NAME ]] && is_vface_name_allocated $VIRT_NAME; then
+    if [[ ! -z $VIRT_NAME ]] && is_vface_name_allocated "$VIRT_NAME"; then
       echo "WARN: interface $VIRT_NAME aleady exists, this will cause an error"
     fi
 }
@@ -1645,7 +1645,7 @@ check_if_new_mac_valid() {
         exit 1
     fi
 
-    if [[ $(get_all_mac_in_system | grep -c ${NEW_MACADDR}) -ne 0 ]]; then
+    if [[ $(get_all_mac_in_system | grep -c "${NEW_MACADDR}") -ne 0 ]]; then
         echo "WARN: MAC address '${NEW_MACADDR}' already exists" >&2
     fi
 }
@@ -1683,16 +1683,16 @@ decide_ip_addresses() {
 
 prepare_wifi_interface() {
     if [[ $USE_IWCONFIG -eq 0 ]]; then
-        iw dev ${WIFI_IFACE} set power_save off
+        iw dev "${WIFI_IFACE}" set power_save off
     fi
     
     if [[ $NO_VIRT -eq 0 ]]; then
     ## Will generate virtual wifi interface
     
         # TODO move this to check_wifi_settings() ?
-        if is_interface_wifi_connected ${WIFI_IFACE}; then
-            WIFI_IFACE_FREQ=$(iw dev ${WIFI_IFACE} link | grep -i freq | awk '{print $2}')
-            WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel ${WIFI_IFACE_FREQ})
+        if is_interface_wifi_connected "${WIFI_IFACE}"; then
+            WIFI_IFACE_FREQ=$(iw dev "${WIFI_IFACE}" link | grep -i freq | awk '{print $2}')
+            WIFI_IFACE_CHANNEL=$(ieee80211_frequency_to_channel "${WIFI_IFACE_FREQ}")
             
             echo "${WIFI_IFACE} already working in channel ${WIFI_IFACE_CHANNEL} (${WIFI_IFACE_FREQ} MHz)"
             
@@ -1708,7 +1708,7 @@ prepare_wifi_interface() {
 
         echo "Creating a virtual WiFi interface... "
         VWIFI_IFACE=$(alloc_new_vface_name)
-        if iw dev ${WIFI_IFACE} interface add ${VWIFI_IFACE} type __ap; then
+        if iw dev "${WIFI_IFACE}" interface add "${VWIFI_IFACE}" type __ap; then
             # Successfully created virtual wifi interface
             # if NM running, it will give the new virtual interface a random MAC. MAC will go back after setting NM unmanaged
             sleep 2  
@@ -1753,14 +1753,14 @@ dealwith_mac() {
     if [[ -n "$NEW_MACADDR" ]] ; then  # user choose to set subnet mac 
 
         echo "Setting ${SUBNET_IFACE} new MAC address ${NEW_MACADDR} ..."
-        set_interface_mac ${SUBNET_IFACE} ${NEW_MACADDR} || die "Failed setting new MAC address"
+        set_interface_mac "${SUBNET_IFACE}" "${NEW_MACADDR}" || die "Failed setting new MAC address"
         
     elif [[ $VWIFI_IFACE ]]; then # user didn't choose to set mac, but using virtual wifi interface
 
-        VMAC=$(get_new_macaddr_according_to_existing ${WIFI_IFACE})
+        VMAC=$(get_new_macaddr_according_to_existing "${WIFI_IFACE}")
         if [[ "$VMAC" ]]; then
             echo "Assigning MAC address $VMAC to virtual interface $VWIFI_IFACE according to $WIFI_IFACE ..."
-            set_interface_mac $VWIFI_IFACE $VMAC
+            set_interface_mac "$VWIFI_IFACE" "$VMAC"
         fi
     fi
 }
@@ -1926,7 +1926,7 @@ write_dnsmasq_conf() {
     if [[ $DNS ]]; then
         DNS_count=$(echo "$DNS" | awk -F, '{print NF}')
         for (( i=1;i<=DNS_count;i++ )); do
-            sep_ip_port "$(echo $DNS | cut -d, -f$i)" DNS_IP DNS_PORT
+            sep_ip_port "$(echo "$DNS" | cut -d, -f$i)" DNS_IP DNS_PORT
             [[ "$DNS_PORT" ]] && DNS_PORT_D="#$DNS_PORT"
             echo "server=${DNS_IP}${DNS_PORT_D}" >> "$CONFDIR/dnsmasq.conf"
         done
@@ -1970,7 +1970,7 @@ run_wifi_ap_processes() {
     # start access point
     #echo "hostapd command-line interface: hostapd_cli -p $CONFDIR/hostapd_ctrl"
     # start hostapd (use stdbuf when available for no delayed output in programs that redirect stdout)
-    STDBUF_PATH=`which stdbuf`
+    STDBUF_PATH=$(which stdbuf)
     if [ $? -eq 0 ]; then
         STDBUF_PATH=$STDBUF_PATH" -oL"
     fi
@@ -1990,7 +1990,7 @@ run_wifi_ap_processes() {
     #    sleep 1
     #done
     #echo -n "hostapd PID: " ; cat $CONFDIR/hostapd.pid
-    pid_watchdog $HOSTAPD_PID 10 "hostapd failed. (tip: try '--hostapd-debug' to get some debug info)" &
+    pid_watchdog "$HOSTAPD_PID" 10 "hostapd failed. (tip: try '--hostapd-debug' to get some debug info)" &
     sleep 3
 }
 
@@ -2017,15 +2017,15 @@ start_dnsmasq() {
     DNSMASQ_PID="$(cat "$CONFDIR/dnsmasq.pid" )"
     echo  "dnsmasq PID: $DNSMASQ_PID" 
     ######(wait $DNSMASQ_PID ; die "dnsmasq failed") &  # wait can't deal with non-child
-    pid_watchdog $DNSMASQ_PID 9 "dnsmasq failed" &
+    pid_watchdog "$DNSMASQ_PID" 9 "dnsmasq failed" &
     sleep 2
 }
 
 check_rfkill_unblock_wifi() {
     local PHY
     if which rfkill > /dev/null 2>&1 ; then
-        PHY=$(get_interface_phy_device ${SUBNET_IFACE})
-        [[ -n $PHY ]] && rfkill unblock $(rfkill | grep $PHY | awk '{print $1}') >/dev/null 2>&1
+        PHY=$(get_interface_phy_device "${SUBNET_IFACE}")
+        [[ -n $PHY ]] && rfkill unblock $(rfkill | grep "$PHY" | awk '{print $1}') >/dev/null 2>&1
     fi
 }
 
@@ -2072,7 +2072,7 @@ echo
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
-echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac $TARGET_IFACE)) $(get_interface_pci_info $TARGET_IFACE)"
+echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac "$TARGET_IFACE")) $(get_interface_pci_info "$TARGET_IFACE")"
 
 if [[ "$MAC_USE_RANDOM" -eq 1 ]] ; then
     NEW_MACADDR="$(generate_random_mac)"
@@ -2108,7 +2108,7 @@ fi
 
 # judge channel availability after changing country code
 if [[ $WIFI_IFACE ]] ; then
-    can_transmit_to_channel ${AP_IFACE} ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
+    can_transmit_to_channel "${AP_IFACE}" ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
 fi
 
 [[ $WIFI_IFACE ]] && write_hostapd_conf
@@ -2116,8 +2116,8 @@ fi
 #===================================================
 
 # set interface unmanaged by networkManager
-if [[ $NM_RUNNING -eq 1 ]] && nm_knows $TARGET_IFACE; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
-    nm_set_unmanaged ${SUBNET_IFACE} # will write NM_UNM_LIST
+if [[ $NM_RUNNING -eq 1 ]] && nm_knows "$TARGET_IFACE"; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
+    nm_set_unmanaged "${SUBNET_IFACE}" # will write NM_UNM_LIST
 fi
 
 [[ $NO_DNSMASQ -eq 0 ]] && write_dnsmasq_conf
@@ -2125,16 +2125,16 @@ fi
 
 # initialize subnet interface
 # take subnet interface down first
-ip link set down dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} down"
+ip link set down dev "${SUBNET_IFACE}" || die "Failed setting ${SUBNET_IFACE} down"
 # flush old IPs of subnet interface
-ip addr flush ${SUBNET_IFACE} || die "Failed flush ${SUBNET_IFACE} IP"
+ip addr flush "${SUBNET_IFACE}" || die "Failed flush ${SUBNET_IFACE} IP"
 
 dealwith_mac # setting MAC should be after setting NM unmanaged
 
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
 # bring subnet interface up
-ip link set up dev ${SUBNET_IFACE} || die "Failed bringing ${SUBNET_IFACE} up"
+ip link set up dev "${SUBNET_IFACE}" || die "Failed bringing ${SUBNET_IFACE} up"
 
 # hostapd , haveged
 [[ $WIFI_IFACE ]] && run_wifi_ap_processes
@@ -2237,6 +2237,6 @@ show_qr() {
 bash -c "while :; do sleep 8000 ; done " &
 KEEP_RUNNING_PID=$!
 echo "$KEEP_RUNNING_PID" > "$CONFDIR/keep_running.pid"
-wait $KEEP_RUNNING_PID
+wait "$KEEP_RUNNING_PID"
 
 clean_exit
