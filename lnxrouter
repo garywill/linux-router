@@ -691,36 +691,40 @@ get_interface_mac() {
     cat "/sys/class/net/${1}/address"
 }
 
-get_interface_pci_info() {  # pci id / model / virtual
+show_interface_pci_info() {  # pci id / model / virtual
     is_interface "$1" || return
     
     local device_path
-    local pci_id
-    local pci_full
-    
-    local pci_path
-    local driver
+    local bus_id=""
+    local device_type_and_bus_id="unknown"
+    local driver=""
+    local device_fullname=""
     
     device_path="$(readlink -f /sys/class/net/$1)"
-    pci_path=$device_path/../..
     
     if [[ "$device_path" == "/sys/devices/pci"* ]]; then
-        pci_id="$(echo "$device_path" | sed 's/\//\n/g' | tail -n 3 |sed -n 1p)"
+        local pci_path
+
+        pci_path=$device_path/../..
+        
+        if [[ -d "$pci_path/driver" ]] ; then
+            driver=$(readlink -f "$pci_path/driver" | sed 's/\//\n/g' | tail -n 1)
+        fi
+        
+        bus_id="$(echo "$device_path" | sed 's/\//\n/g' | tail -n 3 |sed -n 1p)"
+        device_type_and_bus_id="PCI: $bus_id"
         
         if which lspci >/dev/null 2>&1 ; then
-            pci_full="$( lspci -D -nn -s "$pci_id" )"
-            echo -n "  PCI: $pci_full"
-        else
-            echo -n "  PCI: $pci_id"
+            device_fullname="$( lspci -D -nn -s "$bus_id" | awk '{$1="" ; print $0}' )"
         fi
+        
     elif [[ "$device_path" == *"/virtual/"* ]]; then
-        echo "  virtual interface"
+        device_type_and_bus_id="virtual interface"
     fi
     
-    if [[ -d "$pci_path/driver" ]] ; then
-        driver=$(readlink -f "$pci_path/driver" | sed 's/\//\n/g' | tail -n 1)
-        echo -n "    System-already-loaded driver: $driver"
-    fi
+    echo "$device_type_and_bus_id"
+    [[ -n "$driver" ]] && echo "System-already-loaded driver: $driver"
+    [[ -n "$device_fullname" ]] && echo "$device_fullname"
     echo ""
     # TODO usb
 }
@@ -2081,7 +2085,8 @@ echo
 echo "PID: $$"
 
 TARGET_IFACE="$(decide_target_interface)" || exit 1 # judge wired (-i CONN_IFACE) or wireless hotspot (--ap $WIFI_IFACE)
-echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac "$TARGET_IFACE")) $(get_interface_pci_info "$TARGET_IFACE")"
+echo "Target interface is ${TARGET_IFACE} ($(get_interface_mac "$TARGET_IFACE")) "
+show_interface_pci_info "$TARGET_IFACE"
 
 if [[ "$MAC_USE_RANDOM" -eq 1 ]] ; then
     NEW_MACADDR="$(generate_random_mac)"
