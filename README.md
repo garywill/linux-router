@@ -66,7 +66,7 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 
 1-file-script. Release on [Linux-router repo on Github](https://github.com/garywill/linux-router). Just download and run the bash script (meet the dependencies). In this case use without installation.
 
-> I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here
+I'm currently not packaging for any distro. If you do, open a PR and add the link (can be with a version badge) to list here
 
 | Linux distro |                                                                                                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------- |
@@ -91,7 +91,7 @@ Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
 
 ### Provide Internet to an interface
 
-```
+```bash
 sudo lnxrouter -i eth1
 ```
 
@@ -99,7 +99,7 @@ no matter which interface (other than `eth1`) you're getting Internet from.
 
 ### Create WiFi hotspot
 
-```
+```bash
 sudo lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
 
@@ -111,14 +111,14 @@ Clients access Internet through only `isp5`
 
 <details>
 
-```
+```bash
 sudo lnxrouter -i eth1 -o isp5  --no-dns  --dhcp-dns 1.1.1.1  -6 --dhcp-dns6 [2606:4700:4700::1111]
 ```
 
 > In this case of usage, it's recommended to:
 > 
 > 1. Stop serving local DNS
-> 2. Tell clients which DNS to use ISP5's DNS. (Or, a safe public DNS, like above example)
+> 2. Tell clients which DNS to use (ISP5's DNS. Or, a safe public DNS, like above example)
 
 > Also, read *Notice 1*
 
@@ -128,8 +128,11 @@ sudo lnxrouter -i eth1 -o isp5  --no-dns  --dhcp-dns 1.1.1.1  -6 --dhcp-dns6 [26
 
 <details>
 
-```
+```bash
 sudo lnxrouter -n -i eth1
+```
+
+```bash
 sudo lnxrouter -n --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
 
@@ -143,7 +146,7 @@ sudo lnxrouter -n --ap wlan0 MyAccessPoint -p MyPassPhrase
 
 Create a bridge
 
-```
+```bash
 sudo brctl addbr lxcbr5
 ```
 
@@ -156,7 +159,7 @@ lxc.network.link = lxcbr5
 lxc.network.hwaddr = xx:xx:xx:xx:xx:xx
 ```
 
-```
+```bash
 sudo lnxrouter -i lxcbr5
 ```
 
@@ -168,7 +171,7 @@ All clients' Internet traffic go through, for example, Tor (notice this example 
 
 <details>
 
-```
+```bash
 sudo lnxrouter -i eth1 --tp 9040 --dns 9053 -g 192.168.55.1 -6 --p6 fd00:5:6:7::
 ```
 
@@ -193,7 +196,7 @@ To not give our infomation to clients. Clients can still access Internet.
 
 <details>
 
-```
+```bash
 sudo lnxrouter -i eth1 \
     --tp 9040 --dns 9053 \
     --random-mac \
@@ -211,13 +214,13 @@ sudo lnxrouter -i eth1 \
 
 Create a bridge
 
-```
+```bash
 sudo brctl addbr lxdbr5
 ```
 
 Create and add a new LXD profile overriding container's `eth0`
 
-```
+```bash
 lxc profile create profile5
 lxc profile edit profile5
 
@@ -235,13 +238,13 @@ name: profile5
 lxc profile add <container> profile5
 ```
 
-```
+```bash
 sudo lnxrouter -i lxdbr5 --tp 9040 --dns 9053
 ```
 
 To remove that new profile from container
 
-```
+```bash
 lxc profile remove <container> profile5
 ```
 
@@ -249,13 +252,13 @@ lxc profile remove <container> profile5
 
 Add new `eth0` to container overriding default `eth0`
 
-```
+```bash
 lxc config device add <container> eth0 nic name=eth0 nictype=bridged parent=lxdbr5
 ```
 
 To remove the customized `eth0` to restore default `eth0`
 
-```
+```bash
 lxc config device remove <container> eth0
 ```
 
@@ -267,7 +270,7 @@ lxc config device remove <container> eth0
 
 In VirtualBox's global settings, create a host-only network `vboxnet5` with DHCP disabled.
 
-```
+```bash
 sudo lnxrouter -i vboxnet5 --tp 9040 --dns 9053
 ```
 
@@ -279,11 +282,11 @@ sudo lnxrouter -i vboxnet5 --tp 9040 --dns 9053
 
 Create a bridge
 
-```
+```bash
 sudo brctl addbr firejail5
 ```
 
-```
+```bash
 sudo lnxrouter -i firejail5 -g 192.168.55.1 --tp 9040 --dns 9053 
 firejail --net=firejail5 --dns=192.168.55.1 --blacklist=/var/run/nscd
 ```
