@@ -631,7 +631,7 @@ can_transmit_to_channel() {
 
     if [[ $USE_IWCONFIG -eq 0 ]]; then
         if [[ $FREQ_BAND == 2.4 ]]; then
-            CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep " 24[0-9][0-9] MHz \[${CHANNEL_NUM}\]")
+            CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep -E " 24[0-9][0-9](.0+){0,1} MHz \[${CHANNEL_NUM}\]")
         else
             CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep " \(49[0-9][0-9]\|5[0-9]\{3\}\) MHz \[${CHANNEL_NUM}\]")
         fi
