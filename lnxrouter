@@ -1001,7 +1001,6 @@ iptb()
     return $?
 }
 
-IP_VERs=("4" "6")
 
 start_nat() {
     local SUBNET_NET
@@ -2191,6 +2190,12 @@ check_iptables
 echo "NOTICE: Not showing all operations done to iptables rules"
 
 [[ "$NO4" -eq 1 ]] && echo -e "\nWARN: Since you're using in this mode (no IPv4 Internet), make sure you've read Notice 1\n" >&2
+
+if [[ "$IPV6" -eq 0 ]]; then
+    IP_VERs=("4")
+else
+    IP_VERs=("4" "6")
+fi
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
