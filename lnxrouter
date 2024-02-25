@@ -1029,39 +1029,32 @@ start_nat() {
 
 start_ban_lan() {
     local arr_nets_to_protect
+    local ICMP_NAME
     
     echo
     echo "iptables: Disallow clients to access LAN"
-    iptb 4 n filter N lrt${$}${SUBNET_IFACE}-BLF || die
-    # TODO: allow '--dhcp-dns(6)' address port 53, which can be something needed, e.g. a VPN's internal private IP
     
-    arr_nets_to_protect=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.168.0.0/16" "224.0.0.0/4" "255.255.255.255") 
-    for s in "${arr_nets_to_protect[@]}"; do
-        iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d "$s" -j REJECT || die
+    for iv in "${IP_VERs[@]}"; do
+        # ban forwarding for subnet
+        iptb "$iv" n filter N lrt${$}${SUBNET_IFACE}-BLF || die
+        # TODO: allow '--dhcp-dns(6)' address port 53, which can be something needed, e.g. a VPN's internal private IP
+        if [[ "$iv" -eq "4" ]]; then
+            arr_nets_to_protect=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.168.0.0/16" "224.0.0.0/4" "255.255.255.255") 
+            ICMP_NAME="icmp"
+        elif [[ "$iv" -eq "6" ]]; then
+            arr_nets_to_protect=("fc00::/7" "fe80::/10" "ff00::/8" "::1" "::/128" "::ffff:0:0/96" "::ffff:0:0:0/96")
+            ICMP_NAME="icmpv6"
+        fi
+        for s in "${arr_nets_to_protect[@]}"; do
+            iptb "$iv" v filter I lrt${$}${SUBNET_IFACE}-BLF -d "$s" -j REJECT || die
+        done
+        iptb "$iv" n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
+        
+        # ban input from subnet
+        iptb "$iv" n filter N lrt${$}${SUBNET_IFACE}-BLI || die
+        iptb "$iv" v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p "$ICMP_NAME" -j REJECT || die # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
+        iptb "$iv" n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
     done
-    
-    iptb 4 n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
-    
-    iptb 4 n filter N lrt${$}${SUBNET_IFACE}-BLI || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
-    
-    iptb 4 n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
-    
-
-    iptb 6 n filter N lrt${$}${SUBNET_IFACE}-BLF  || die
-    
-    arr_nets_to_protect=("fc00::/7" "fe80::/10" "ff00::/8" "::1" "::/128" "::ffff:0:0/96" "::ffff:0:0:0/96")
-    for s in "${arr_nets_to_protect[@]}"; do
-        iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d "$s" -j REJECT || die
-    done
-
-
-    iptb 6 n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
-    
-    iptb 6 n filter N lrt${$}${SUBNET_IFACE}-BLI  || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p icmpv6 -j REJECT || die
-
-    iptb 6 n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
 
 }
 
