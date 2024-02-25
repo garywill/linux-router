@@ -1118,44 +1118,41 @@ allow_dhcp() {
 
 # TODO: use 'DNAT' instead of '--to-ports' to support other IP
 start_redsocks() {
+    local SUBNET_NET
     local arr_nets_to_ignore
-    local s
+    local s iv
     
     echo
     echo "iptables: transparent proxy non-LAN TCP and UDP(not tested) traffic to port ${TP_PORT}"
-    if [[ $NO4 -eq 0 ]]; then
-        iptb 4 n nat N lrt${$}${SUBNET_IFACE}-TP || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" && ! $NO4 -eq 0 ]] && continue
         
-        arr_nets_to_ignore=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.168.0.0/16" "224.0.0.0/4" "255.255.255.255")
+        [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
+        [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+            
+            
+        iptb "$iv" n nat N lrt${$}${SUBNET_IFACE}-TP || die
+        
+        if [[ "$iv" -eq "4" ]]; then
+            arr_nets_to_ignore=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.168.0.0/16" "224.0.0.0/4" "255.255.255.255")
+        elif [[ "$iv" -eq "6" ]];then
+            arr_nets_to_ignore=("fc00::/7" "fe80::/10" "ff00::/8" "::1" "::")
+        fi
         
         for s in "${arr_nets_to_ignore[@]}"; do
-            iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d "$s" -j RETURN || die
+            iptb "$iv" n nat A lrt${$}${SUBNET_IFACE}-TP -d "$s" -j RETURN || die
         done
 
-        iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-        iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb "$iv" v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb "$iv" v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-        iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -j lrt${$}${SUBNET_IFACE}-TP || die
+        iptb "$iv" v nat I PREROUTING -i "$SUBNET_IFACE" -s "$SUBNET_NET" -j lrt${$}${SUBNET_IFACE}-TP || die
 
-        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
-    fi
-
-        iptb 6 n nat N lrt${$}${SUBNET_IFACE}-TP || die
         
-        arr_nets_to_ignore=("fc00::/7" "fe80::/10" "ff00::/8" "::1" "::")
-        for s in "${arr_nets_to_ignore[@]}"; do
-            iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d "$s" -j RETURN || die
-        done
-
-        iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-        iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
-
-        iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -j lrt${$}${SUBNET_IFACE}-TP || die
-
-        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
-
+        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+    done
 }
 
 #---------------------------------------
