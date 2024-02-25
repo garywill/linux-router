@@ -999,7 +999,11 @@ iptb()
     return $?
 }
 
+IP_VERs=("4" "6")
+
 start_nat() {
+    local SUBNET_NET
+
     if [[ $INTERNET_IFACE ]]; then
         IPTABLES_NAT_OUT="-o ${INTERNET_IFACE}"
         IPTABLES_NAT_IN="-i ${INTERNET_IFACE}"
@@ -1009,15 +1013,18 @@ start_nat() {
     fi
     echo
     echo "iptables: NAT "
-    if [[ $NO4 -eq 0 ]]; then
-        iptb 4 v nat I POSTROUTING -s "$SUBNET_NET4" $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d "$SUBNET_NET4"  -j MASQUERADE || die
-        iptb 4 v filter I FORWARD  -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s "$SUBNET_NET4" -j ACCEPT || die
-        iptb 4 v filter I FORWARD  -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d "$SUBNET_NET4" -j ACCEPT || die
-    fi
-
-        iptb 6 v nat I POSTROUTING  -s "$SUBNET_NET6" $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d "$SUBNET_NET6"  -j MASQUERADE || die
-        iptb 6 v filter I FORWARD   -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s "$SUBNET_NET6" -j ACCEPT || die
-        iptb 6 v filter I FORWARD   -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d "$SUBNET_NET6" -j ACCEPT || die
+    
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" && ! $NO4 -eq 0 ]] && continue
+        
+        [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
+        [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+            
+        iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET" $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d "$SUBNET_NET"  -j MASQUERADE || die
+        iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE" $IPTABLES_NAT_OUT -s "$SUBNET_NET" -j ACCEPT || die
+        iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE" $IPTABLES_NAT_IN  -d "$SUBNET_NET" -j ACCEPT || die
+    done 
 }
 
 start_ban_lan() {
