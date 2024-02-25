@@ -1083,13 +1083,21 @@ allow_dns_port() {
 
 
 start_catch_dns() {
+    local GATEWAY
+    local PROTs
+
     echo
     echo "iptables: redirect DNS queries to this host"
-    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY4} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY4} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
-
-    iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-    iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" ]] && GATEWAY="$GATEWAY4"
+        [[ "$iv" -eq "6" ]] && GATEWAY="$GATEWAY6"
+   
+        PROTs=("tcp" "udp")
+        for pt in "${PROTs[@]}"; do
+            iptb "$iv" v nat I PREROUTING -i "$SUBNET_IFACE" ! -d "$GATEWAY" -p "$pt" -m "$pt" --dport 53 -j REDIRECT --to-ports 53 || die
+        done
+    done
 }
 
 
