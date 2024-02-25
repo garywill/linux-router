@@ -187,6 +187,8 @@ define_global_variables(){
     SUBNET_IFACE=  # which interface to create network
     SHARE_METHOD=nat 
     OLD_MACADDR=
+    SUBNET_NET4=
+    SUBNET_NET6=
     
 
     ##### wifi hotspot
@@ -1008,14 +1010,14 @@ start_nat() {
     echo
     echo "iptables: NAT "
     if [[ $NO4 -eq 0 ]]; then
-        iptb 4 v nat I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
-        iptb 4 v filter I FORWARD  -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-        iptb 4 v filter I FORWARD  -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
+        iptb 4 v nat I POSTROUTING -s "$SUBNET_NET4" $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d "$SUBNET_NET4"  -j MASQUERADE || die
+        iptb 4 v filter I FORWARD  -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s "$SUBNET_NET4" -j ACCEPT || die
+        iptb 4 v filter I FORWARD  -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d "$SUBNET_NET4" -j ACCEPT || die
     fi
 
-        iptb 6 v nat I POSTROUTING  -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE || die
-        iptb 6 v filter I FORWARD   -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT || die
-        iptb 6 v filter I FORWARD   -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d ${PREFIX6}/64 -j ACCEPT || die
+        iptb 6 v nat I POSTROUTING  -s "$SUBNET_NET6" $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d "$SUBNET_NET6"  -j MASQUERADE || die
+        iptb 6 v filter I FORWARD   -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s "$SUBNET_NET6" -j ACCEPT || die
+        iptb 6 v filter I FORWARD   -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d "$SUBNET_NET6" -j ACCEPT || die
 }
 
 start_ban_lan() {
@@ -1059,10 +1061,10 @@ start_ban_lan() {
 allow_dns_port() {
     echo
     echo "iptables: allow DNS"
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
+    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
 }
 
 
@@ -1102,10 +1104,10 @@ start_redsocks() {
         iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
         iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-        iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j lrt${$}${SUBNET_IFACE}-TP || die
+        iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -j lrt${$}${SUBNET_IFACE}-TP || die
 
-        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
     fi
 
         iptb 6 n nat N lrt${$}${SUBNET_IFACE}-TP || die
@@ -1118,10 +1120,10 @@ start_redsocks() {
         iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
         iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-        iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j lrt${$}${SUBNET_IFACE}-TP || die
+        iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -j lrt${$}${SUBNET_IFACE}-TP || die
 
-        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
+        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
 
 }
 
@@ -1680,6 +1682,10 @@ decide_ip_addresses() {
     if [[ $IPV6 -eq 1 ]]; then
         GATEWAY6="${PREFIX6}${IID6}"
     fi
+    
+    SUBNET_NET4="${GATEWAY%.*}.0/24"
+    [[ $IPV6 -eq 1 ]] && SUBNET_NET6="${PREFIX6}/64"
+    
 }
 
 prepare_wifi_interface() {
