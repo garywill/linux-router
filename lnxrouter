@@ -1004,28 +1004,54 @@ iptb()
 
 start_nat() {
     local SUBNET_NET
+    
     local iv
 
-    if [[ $INTERNET_IFACE ]]; then
-        IPTABLES_NAT_OUT="-o ${INTERNET_IFACE}"
-        IPTABLES_NAT_IN="-i ${INTERNET_IFACE}"
-        MASQUERADE_NOTOUT=""
-    else
-        MASQUERADE_NOTOUT="! -o ${SUBNET_IFACE}"
-    fi
     echo
     echo "iptables: NAT "
-    
     
     for iv in "${IP_VERs[@]}"; do
         [[ "$iv" -eq "4" && ! $NO4 -eq 0 ]] && continue
         
         [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
         [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+        
+        if [[ -n "$INTERNET_IFACE" ]]; then # only one Internet interface
+            # masquerade subnet -> internet
+            iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET"  ! -d "$SUBNET_NET" \
+                -o "$INTERNET_IFACE" \
+                -j MASQUERADE || die
+                
+            # forward subnet -> internet
+            iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE"  -s "$SUBNET_NET" \
+                -o $INTERNET_IFACE \
+                -j ACCEPT || die
+            iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE" \
+                ! -o $INTERNET_IFACE \
+                -j REJECT || die
             
-        iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET" $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d "$SUBNET_NET"  -j MASQUERADE || die
-        iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE" $IPTABLES_NAT_OUT -s "$SUBNET_NET" -j ACCEPT || die
-        iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE" $IPTABLES_NAT_IN  -d "$SUBNET_NET" -j ACCEPT || die
+            # forward any -> subnet
+            iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"  -d "$SUBNET_NET"  \
+                -i "$INTERNET_IFACE" \
+                -j ACCEPT || die
+            iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"    \
+                ! -i "$INTERNET_IFACE" \
+                -j REJECT || die
+
+        else # any interface can be Internet
+            # masquerade subnet -> any(!subnet)
+            iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET"  ! -d "$SUBNET_NET" \
+                ! -o "$SUBNET_IFACE"  \
+                -j MASQUERADE || die
+                
+            # forward subnet -> any
+            iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE"  -s "$SUBNET_NET"  \
+                -j ACCEPT || die
+                
+            # forward any -> subnet
+            iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"  -d "$SUBNET_NET" \
+                -j ACCEPT || die
+        fi
     done 
 }
 
