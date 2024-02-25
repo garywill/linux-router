@@ -1059,12 +1059,26 @@ start_ban_lan() {
 }
 
 allow_dns_port() {
+    local SUBNET_NET
+    local GATEWAY
+    local PROTs
+    
     echo
     echo "iptables: allow DNS"
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY4} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY4} -p udp -m udp --dport 53 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" ]] && GATEWAY="$GATEWAY4"
+        [[ "$iv" -eq "6" ]] && GATEWAY="$GATEWAY6"
+        
+        [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
+        [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+
+
+        PROTs=("tcp" "udp")
+        for pt in "${PROTs[@]}"; do
+            iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -d "$GATEWAY" -p "$pt" -m "$pt" --dport 53 -j ACCEPT || die
+        done
+    done 
 }
 
 
