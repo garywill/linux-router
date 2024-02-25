@@ -228,6 +228,7 @@ define_global_variables(){
     # -- variables for running
     CONFDIR=
     NM_RUNNING=0
+    IP_VERs=
     NM_UNM_LIST=  # it's called "list" but for now one interface
 }
 
@@ -2199,6 +2200,20 @@ dealwith_mac # setting MAC should be after setting NM unmanaged
 
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
+
+check_iptables
+
+echo "NOTICE: Not showing all operations done to iptables rules"
+
+if [[ "$IPV6" -eq 0 ]]; then
+    IP_VERs=("4")
+else
+    IP_VERs=("4" "6")
+fi
+
+disable_unwanted_forwarding 
+
+
 # bring subnet interface up
 ip link set up dev "${SUBNET_IFACE}" || die "Failed bringing ${SUBNET_IFACE} up"
 
@@ -2215,17 +2230,6 @@ if [[ $IPV6 -eq 1 ]] ; then
     ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6 address"
 fi
 
-check_iptables
-
-echo "NOTICE: Not showing all operations done to iptables rules"
-
-if [[ "$IPV6" -eq 0 ]]; then
-    IP_VERs=("4")
-else
-    IP_VERs=("4" "6")
-fi
-
-disable_unwanted_forwarding
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
