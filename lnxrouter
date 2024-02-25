@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.7.3
+VERSION=0.7.5b
 PROGNAME="$(basename "$0")"
 
 export LC_ALL=C
