@@ -159,7 +159,7 @@ check_empty_option(){
 
 define_global_variables(){
     # user options
-    GATEWAY=  # IPv4 address for this host
+    GATEWAY4=  # IPv4 address for this host
     PREFIX6=  # IPv6 LAN address prefix for this host
     IID6=1    # IPv6 LAN ID for this host
     IPV6=0  # enable ipv6
@@ -277,7 +277,7 @@ parse_user_options(){
                 
             -g)
                 shift
-                GATEWAY="$1"
+                GATEWAY4="$1"
                 shift
                 ;;
             -6)
@@ -1061,8 +1061,8 @@ start_ban_lan() {
 allow_dns_port() {
     echo
     echo "iptables: allow DNS"
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY4} -p tcp -m tcp --dport 53 -j ACCEPT || die
+    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET4" -d ${GATEWAY4} -p udp -m udp --dport 53 -j ACCEPT || die
     iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
     iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s "$SUBNET_NET6" -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
 }
@@ -1071,8 +1071,8 @@ allow_dns_port() {
 start_catch_dns() {
     echo
     echo "iptables: redirect DNS queries to this host"
-    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
+    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY4} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
+    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY4} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
 
     iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
     iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
@@ -1666,11 +1666,11 @@ decide_target_interface() {
 }
 
 decide_ip_addresses() {
-    if [[ ! -n $GATEWAY ]]; then
-        GATEWAY="$(generate_random_ip4)"
-        echo "Use random LAN IPv4 address $GATEWAY"
-    elif [[ ! "$GATEWAY" =~ "." ]]; then
-        GATEWAY="192.168.${GATEWAY}.1"
+    if [[ ! -n $GATEWAY4 ]]; then
+        GATEWAY4="$(generate_random_ip4)"
+        echo "Use random LAN IPv4 address $GATEWAY4"
+    elif [[ ! "$GATEWAY4" =~ "." ]]; then
+        GATEWAY4="192.168.${GATEWAY4}.1"
     fi
 
     if [[ $IPV6 -eq 1 && ! -n $PREFIX6 ]]; then
@@ -1683,7 +1683,7 @@ decide_ip_addresses() {
         GATEWAY6="${PREFIX6}${IID6}"
     fi
     
-    SUBNET_NET4="${GATEWAY%.*}.0/24"
+    SUBNET_NET4="${GATEWAY4%.*}.0/24"
     [[ $IPV6 -eq 1 ]] && SUBNET_NET6="${PREFIX6}/64"
     
 }
@@ -1889,12 +1889,12 @@ write_dnsmasq_conf() {
 		user=nobody
 		group=$NOBODY_GROUP
 		bind-dynamic
-		listen-address=${GATEWAY}
+		listen-address=${GATEWAY4}
 		interface=$SUBNET_IFACE
 		except-interface=lo
 		no-dhcp-interface=lo
-		dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
-		dhcp-option-force=option:router,${GATEWAY}
+		dhcp-range=${GATEWAY4%.*}.10,${GATEWAY4%.*}.250,255.255.255.0
+		dhcp-option-force=option:router,${GATEWAY4}
 		#log-dhcp
 		log-facility=$CONFDIR/dnsmasq.log
 		bogus-priv
@@ -1908,7 +1908,7 @@ write_dnsmasq_conf() {
     fi
     if [[ "$DHCP_DNS" != "no" ]]; then
         if [[ "$DHCP_DNS" == "gateway" ]]; then
-            dns_offer="$GATEWAY"
+            dns_offer="$GATEWAY4"
         else
             dns_offer="$DHCP_DNS"
         fi
@@ -2148,7 +2148,7 @@ ip link set up dev "${SUBNET_IFACE}" || die "Failed bringing ${SUBNET_IFACE} up"
 [[ $WIFI_IFACE ]] && run_wifi_ap_processes
 
 # add ipv4 address to subnet interface
-ip -4 addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
+ip -4 addr add ${GATEWAY4}/24 broadcast ${GATEWAY4%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
 
 set_ipv6_bits
 
