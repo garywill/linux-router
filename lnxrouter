@@ -948,6 +948,8 @@ iptb()
     local FULL=""
     local ADD_TO_UNDO=1
     
+    local arr_name  w
+    
     for arr_name in CUSTOM_CHAINS_4_filter CUSTOM_CHAINS_4_nat CUSTOM_CHAINS_6_filter CUSTOM_CHAINS_6_nat
     do
         local arr_content
@@ -1003,6 +1005,7 @@ IP_VERs=("4" "6")
 
 start_nat() {
     local SUBNET_NET
+    local iv
 
     if [[ $INTERNET_IFACE ]]; then
         IPTABLES_NAT_OUT="-o ${INTERNET_IFACE}"
@@ -1030,6 +1033,7 @@ start_nat() {
 start_ban_lan() {
     local arr_nets_to_protect
     local ICMP_NAME
+    local iv  s
     
     echo
     echo "iptables: Disallow clients to access LAN"
@@ -1062,6 +1066,8 @@ allow_dns_port() {
     local SUBNET_NET
     local GATEWAY
     local PROTs
+    local iv  pt
+
     
     echo
     echo "iptables: allow DNS"
@@ -1085,6 +1091,7 @@ allow_dns_port() {
 start_catch_dns() {
     local GATEWAY
     local PROTs
+    local iv  pt
 
     echo
     echo "iptables: redirect DNS queries to this host"
@@ -1112,6 +1119,8 @@ allow_dhcp() {
 # TODO: use 'DNAT' instead of '--to-ports' to support other IP
 start_redsocks() {
     local arr_nets_to_ignore
+    local s
+    
     echo
     echo "iptables: transparent proxy non-LAN TCP and UDP(not tested) traffic to port ${TP_PORT}"
     if [[ $NO4 -eq 0 ]]; then
@@ -1897,6 +1906,7 @@ write_hostapd_conf() {
 }
 
 write_dnsmasq_conf() {
+    local i
     if grep "^nobody:" /etc/group >/dev/null 2>&1 ; then
         NOBODY_GROUP="nobody"
     else
