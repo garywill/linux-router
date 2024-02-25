@@ -217,7 +217,6 @@ define_global_variables(){
     VIRT_NAME= # name to use for virtual interface if --virt-name is used
     AP_IFACE=     # can be VWIFI_IFACE or WIFI_IFACE
     USE_IWCONFIG=0  # some device can't use iw
-    
     #######
     
     #-- to deal with info of a running instance. then will exit
@@ -227,9 +226,9 @@ define_global_variables(){
 
     # -- variables for running
     CONFDIR=
-    NM_RUNNING=0
     IP_VERs=
     NM_UNM_LIST=  # it's called "list" but for now one interface
+    NM_PID=
 }
 
 parse_user_options(){
@@ -855,14 +854,31 @@ pid_watchdog() {
     
 }
 #========
+function get_pid_by_dbus_name() {
+    local DBUS_NAME="$1"
+    local pid  r
+    
+    which dbus-send >/dev/null 2>&1 || return 1
+    
+    pid="$( dbus-send --system --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID string:$DBUS_NAME | grep "   uint32 " | awk '{print $2}' )" 2>/dev/null
+    r=$?
+    
+    echo "$pid"
+    return $r
+}
 
 
+#-----------------
 # only support NetworkManager >= 0.9.9
 is_nm_running() {
+    NM_PID="$(get_pid_by_dbus_name "org.freedesktop.NetworkManager")"
+    
+    [[ ! -n "$NM_PID" ]] && return 1
+    
     if (which nmcli >/dev/null 2>&1 ) && (nmcli -t -f RUNNING g 2>&1 | grep -E '^running$' >/dev/null 2>&1 ) ; then
-        echo 1
+        return 0
     else
-        echo 0
+        return 1
     fi
 }
 
@@ -2109,8 +2125,6 @@ ARGS=( "$@" )
 parse_user_options "$@"
 # TODO: detect user option conflict
 
-# check if networkManager running
-NM_RUNNING="$(is_nm_running)"
 
 TMPDIR="$(decide_tmpdir)"
 
@@ -2183,7 +2197,7 @@ fi
 #===================================================
 
 # set interface unmanaged by networkManager
-if [[ $NM_RUNNING -eq 1 ]] && nm_knows "$TARGET_IFACE"; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
+if is_nm_running && nm_knows "$TARGET_IFACE"; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
     nm_set_unmanaged "${SUBNET_IFACE}" # will write NM_UNM_LIST
 fi
 
