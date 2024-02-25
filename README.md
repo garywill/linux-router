@@ -25,6 +25,7 @@ Basic features:
 - Transparent proxy (redsocks)
 - Transparent DNS proxy (hijack port 53 packets)
 - Detect NetworkManager and make sure it won't interfere (handle interface (un)managed status)
+- Detect firewalld and make sure it won't interfere our (by using `trusted` zone)
 - You can run many instances, to create many different networks. Has instances managing feature.
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
@@ -450,11 +451,6 @@ Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and
 - 🙋‍♂️ Contributions are not limited to coding. There're [some posts and questions](https://github.com/garywill/linux-router/issues) that need more people to answer
 
 ## TODO
-
-Sooner is better:
-- Detect firewalld and make sure it won't interfere our interface
-
-Future:
 - WPA3
 - Global IPv6
 - Explictly ban forwarding if not needed

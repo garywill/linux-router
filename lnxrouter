@@ -229,6 +229,8 @@ define_global_variables(){
     IP_VERs=
     NM_UNM_LIST=  # it's called "list" but for now one interface
     NM_PID=
+    FIREWALLD_PID=
+    TMP_FIREWALLD_ZONE=
 }
 
 parse_user_options(){
@@ -872,8 +874,6 @@ is_same_netns() {
     [[ "$(readlink /proc/$$/ns/net)" == "$(readlink /proc/$pid2/ns/net)" ]] && return 0
     return 1
 }
-
-
 #-----------------
 # only support NetworkManager >= 0.9.9
 is_nm_running() {
@@ -925,22 +925,37 @@ nm_restore_manage() {
     fi
 }
 #-------
-
-#=========
-check_iptables()
-{
-    echo
-    iptables --version
+is_firewalld_running() {
+    FIREWALLD_PID="$(get_pid_by_dbus_name "org.fedoraproject.FirewallD1")"
     
-    if which firewall-cmd > /dev/null 2>&1; then
-        if [[ "$(firewall-cmd --state 2>&1)" == "running" ]]; then
+    [[ ! -n "$FIREWALLD_PID" ]] && return 1 # not running
+    
+    if (which firewall-cmd >/dev/null 2>&1 ) && [[ "$(firewall-cmd --state 2>&1)" == "running" ]] ; then
+        if is_same_netns "$FIREWALLD_PID"; then
             echo "firewalld is running ($(firewall-cmd --version))"
-            echo -e "\nWARN: We haven't completed the compatibility with firewalld.\nWARN: If you see any trouble, try:\nWARN:     1) 'firewall-cmd --zone=trusted --add-interface=<SUBN_IFACE>'\nWARN:     2) disable firewalld\n" >&2 
-            # TODO
+            return 0
         fi
+    fi
+
+    FIREWALLD_PID=  # cancel value if treat as not running
+    return 1  # not running
+}
+firewalld_add_tmpzone() {
+#     TMP_FIREWALLD_ZONE="lrt${$}${SUBNET_IFACE}"
+    TMP_FIREWALLD_ZONE="trusted"
+#     firewall-cmd --new-zone=$TMP_FIREWALLD_ZONE  || die "Failed creating temporary firewalld zone"
+    echo "Adding $SUBNET_IFACE to firewalld '$TMP_FIREWALLD_ZONE' zone"
+    firewall-cmd --zone=$TMP_FIREWALLD_ZONE --add-interface=$SUBNET_IFACE >/dev/null || die "Failed adding interface to firewalld temporary zone"
+}
+firewalld_del_tmpzone() {
+    if [[ -n "$TMP_FIREWALLD_ZONE" ]];then
+        echo "Removing $SUBNET_IFACE from firewalld '$TMP_FIREWALLD_ZONE' zone"
+        firewall-cmd --zone=$TMP_FIREWALLD_ZONE --remove-interface=$SUBNET_IFACE >/dev/null
+#         firewall-cmd --delete-zone=$TMP_FIREWALLD_ZONE
     fi
 }
 
+#=========
 CUSTOM_CHAINS_4_filter=
 CUSTOM_CHAINS_4_nat=
 CUSTOM_CHAINS_6_filter=
@@ -1312,6 +1327,8 @@ _cleanup() {
     rm -rf "$CONFDIR"
     
     ip link set down dev "${SUBNET_IFACE}"
+    
+    firewalld_del_tmpzone
     
     if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev "${VWIFI_IFACE}" del
@@ -2226,9 +2243,9 @@ dealwith_mac # setting MAC should be after setting NM unmanaged
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
 
-check_iptables
-
-echo "NOTICE: Not showing all operations done to iptables rules"
+echo
+iptables --version
+echo "Notice: Not showing all operations done to iptables rules"
 
 if [[ "$IPV6" -eq 0 ]]; then
     IP_VERs=("4")
@@ -2302,6 +2319,11 @@ fi
 [[ "$CATCH_DNS" -eq 1 ]] && start_catch_dns
 
 [[ $NO_DNSMASQ -eq 0 ]] && ( allow_dhcp ; start_dnsmasq )
+
+
+echo ""
+is_firewalld_running && firewalld_add_tmpzone
+
 
 echo 
 echo "== Setting up completed, now linux-router should be working =="
