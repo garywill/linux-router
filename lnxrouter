@@ -29,17 +29,16 @@ Options:
                             and to provide Internet to
                             (To create WiFi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
-                            (See Notice 1)
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
-    -n                      Do not provide Internet (See Notice 1)
+    -n                      Do not provide Internet
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
                             (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
-    --no4                   Disable IPv4 Internet (not forwarding IPv4)
-                            (See Notice 1). Usually used with '-6'
+    --no4                   Disable IPv4 Internet (not forwarding IPv4).
+                            Usually used with '-6'
                             
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
                             (example: 'fd00:0:0:5::' or '5' shortly) 
@@ -135,12 +134,6 @@ Options:
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
-
-    Notice 1:   This script assume your host's default policy won't forward
-                packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case (eg. mistaken configurations) may
-                cause unwanted packets leakage between 2 networks, which you
-                should be aware of if you want isolated network
                 
 Examples:
     $PROGNAME -i eth1
@@ -1001,7 +994,25 @@ iptb()
     return $?
 }
 
-
+disable_unwanted_forwarding() {
+    for iv in "${IP_VERs[@]}"; do
+        if [[ "$INTERNET_IFACE" ]]; then
+            iptb "$iv" n filter I FORWARD  \
+                -i "$SUBNET_IFACE"      ! -o "$INTERNET_IFACE" \
+                -j REJECT || die
+            iptb "$iv" n filter I FORWARD  \
+                ! -i "$INTERNET_IFACE"    -o "$SUBNET_IFACE" \
+                -j REJECT || die
+        fi
+        
+        if [[ "$SHARE_METHOD" == 'redsocks' || "$SHARE_METHOD" == 'none' \
+            || ( "$iv" -eq "4" && "$NO4" -eq 1  ) ]];then
+            iptb "$iv" n filter I FORWARD  -i "$SUBNET_IFACE"  -j REJECT || die
+            iptb "$iv" n filter I FORWARD  -o "$SUBNET_IFACE"  -j REJECT || die
+        fi
+    done
+        
+}
 start_nat() {
     local SUBNET_NET
     
@@ -1026,18 +1037,11 @@ start_nat() {
             iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE"  -s "$SUBNET_NET" \
                 -o $INTERNET_IFACE \
                 -j ACCEPT || die
-            iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE" \
-                ! -o $INTERNET_IFACE \
-                -j REJECT || die
             
             # forward any -> subnet
             iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"  -d "$SUBNET_NET"  \
                 -i "$INTERNET_IFACE" \
                 -j ACCEPT || die
-            iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"    \
-                ! -i "$INTERNET_IFACE" \
-                -j REJECT || die
-
         else # any interface can be Internet
             # masquerade subnet -> any(!subnet)
             iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET"  ! -d "$SUBNET_NET" \
@@ -2215,27 +2219,22 @@ check_iptables
 
 echo "NOTICE: Not showing all operations done to iptables rules"
 
-[[ "$NO4" -eq 1 ]] && echo -e "\nWARN: Since you're using in this mode (no IPv4 Internet), make sure you've read Notice 1\n" >&2
-
 if [[ "$IPV6" -eq 0 ]]; then
     IP_VERs=("4")
 else
     IP_VERs=("4" "6")
 fi
 
+disable_unwanted_forwarding
+
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
 
     echo "No Internet sharing"
     
-    echo -e "\nWARN: Since you're using in this mode (no Internet share), make sure you've read Notice 1\n" >&2
-    
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
-
-    [[ "$INTERNET_IFACE" ]] && echo -e "\nWARN: Since you're using in this mode (specify Internet interface), make sure you've read Notice 1\n" >&2
-
     [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS. In some unexpected case (eg. mistaken configurations), queries may leak to other interfaces, which you should be aware of.\n" >&2
     
     start_nat

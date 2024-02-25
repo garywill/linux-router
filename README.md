@@ -120,8 +120,6 @@ sudo lnxrouter -i eth1 -o isp5  --no-dns  --dhcp-dns 1.1.1.1  -6 --dhcp-dns6 [26
 > 1. Stop serving local DNS
 > 2. Tell clients which DNS to use (ISP5's DNS. Or, a safe public DNS, like above example)
 
-> Also, read *Notice 1*
-
 </details>
 
 ### Create LAN without providing Internet
@@ -135,8 +133,6 @@ sudo lnxrouter -n -i eth1
 ```bash
 sudo lnxrouter -n --ap wlan0 MyAccessPoint -p MyPassPhrase
 ```
-
-> Read _Notice 1_
 
 </details>
 
@@ -312,17 +308,16 @@ Options:
                             and to provide Internet to
                             (To create WiFi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
-                            (See Notice 1)
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
-    -n                      Do not provide Internet (See Notice 1)
+    -n                      Do not provide Internet
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
                             (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
-    --no4                   Disable IPv4 Internet (not forwarding IPv4)
-                            (See Notice 1). Usually used with '-6'
+    --no4                   Disable IPv4 Internet (not forwarding IPv4).
+                            Usually used with '-6'
                             
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
                             (example: 'fd00:0:0:5::' or '5' shortly) 
@@ -418,12 +413,11 @@ Options:
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
-
-    Notice 1:   This script assume your host's default policy won't forward
-                packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case (eg. mistaken configurations) may
-                cause unwanted packets leakage between 2 networks, which you
-                should be aware of if you want isolated network
+                
+Examples:
+    lnxrouter -i eth1
+    lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
+    lnxrouter -i eth1 --tp <transparent-proxy> --dns <dns-proxy>
 ```
 
 </details>
@@ -455,20 +449,6 @@ Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and
 - 🍃 Also some [unfulfilled enhancements in the Issues](https://github.com/garywill/linux-router/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement)
 - 🙋‍♂️ Contributions are not limited to coding. There're [some posts and questions](https://github.com/garywill/linux-router/issues) that need more people to answer
 
-## Notice
-
-<details>
-
-```
-    Notice 1:   This script assume your host's default policy won't forward
-                packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case (eg. mistaken configurations) may
-                cause unwanted packets leakage between 2 networks, which you
-                should be aware of if you want isolated network
-```
-
-</details>
-
 ## TODO
 
 Sooner is better:
@@ -478,7 +458,6 @@ Future:
 - WPA3
 - Global IPv6
 - Explictly ban forwarding if not needed
-- Bring bridging method back
 
 ## License
 
