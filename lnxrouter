@@ -854,7 +854,7 @@ pid_watchdog() {
     
 }
 #========
-function get_pid_by_dbus_name() {
+get_pid_by_dbus_name() {
     local DBUS_NAME="$1"
     local pid  r
     
@@ -866,6 +866,12 @@ function get_pid_by_dbus_name() {
     echo "$pid"
     return $r
 }
+is_same_netns() {
+    local pid2="$1"
+    [[ ! -f /proc/$$/ns/net ]] && return 0 # no netns feature. treat as same
+    [[ "$(readlink /proc/$$/ns/net)" == "$(readlink /proc/$pid2/ns/net)" ]] && return 0
+    return 1
+}
 
 
 #-----------------
@@ -873,13 +879,16 @@ function get_pid_by_dbus_name() {
 is_nm_running() {
     NM_PID="$(get_pid_by_dbus_name "org.freedesktop.NetworkManager")"
     
-    [[ ! -n "$NM_PID" ]] && return 1
+    [[ ! -n "$NM_PID" ]] && return 1 # not running
     
     if (which nmcli >/dev/null 2>&1 ) && (nmcli -t -f RUNNING g 2>&1 | grep -E '^running$' >/dev/null 2>&1 ) ; then
-        return 0
-    else
-        return 1
+        if is_same_netns "$NM_PID"; then
+            return 0
+        fi
     fi
+    
+    NM_PID= # cancel value if treat as not running
+    return 1  # not running
 }
 
 nm_knows() {
@@ -915,6 +924,8 @@ nm_restore_manage() {
         sleep 0.5
     fi
 }
+#-------
+
 #=========
 check_iptables()
 {
