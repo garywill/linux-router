@@ -327,7 +327,7 @@ Options:
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
-                            (default: use /etc/resolve.conf)
+                            (default: use /etc/resolv.conf)
                             (Note IPv6 addresses need '[]' around)
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
