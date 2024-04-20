@@ -453,7 +453,6 @@ Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and
 ## TODO
 - WPA3
 - Global IPv6
-- Explictly ban forwarding if not needed
 
 ## License
 
