@@ -862,7 +862,7 @@ get_pid_by_dbus_name() {
     
     which dbus-send >/dev/null 2>&1 || return 1
     
-    pid="$( dbus-send --system --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID string:$DBUS_NAME | grep "   uint32 " | awk '{print $2}' )" 2>/dev/null
+    pid="$( dbus-send --system --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID string:$DBUS_NAME  2>/dev/null | grep "   uint32 " | awk '{print $2}' )"
     r=$?
     
     echo "$pid"
