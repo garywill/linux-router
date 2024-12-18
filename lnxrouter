@@ -2087,8 +2087,8 @@ run_wifi_ap_processes() {
     echo 
     echo "Starting hostapd"
     
-    if which complain > /dev/null 2>&1; then
-        complain hostapd
+    if COMPLAIN_CMD=$(command -v complain || command -v aa-complain); then
+        $COMPLAIN_CMD hostapd
     fi
     
     # hostapd '-P' works only when use '-B' (run in background)
@@ -2108,10 +2108,10 @@ start_dnsmasq() {
     echo 
     echo "Starting dnsmasq"
     
-    if which complain > /dev/null 2>&1; then
+    if COMPLAIN_CMD=$(command -v complain || command -v aa-complain); then
         # openSUSE's apparmor does not allow dnsmasq to read files.
         # remove restriction.
-        complain dnsmasq
+        $COMPLAIN_CMD dnsmasq
     fi
     
     # Using '-d'(no daemon) dnsmasq will not turn into 'nobody'
