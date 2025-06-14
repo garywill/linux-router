@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.7.3a
+VERSION=0.8.0-unstable0
 PROGNAME="$(basename "$0")"
 
 export LC_ALL=C
@@ -29,17 +29,16 @@ Options:
                             and to provide Internet to
                             (To create WiFi hotspot use '--ap' instead)
     -o <interface>          Specify an inteface to provide Internet from.
-                            (See Notice 1)
                             (Note using this with default DNS option may leak
                             queries to other interfaces)
-    -n                      Do not provide Internet (See Notice 1)
+    -n                      Do not provide Internet
     --ban-priv              Disallow clients to access my private network
     
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
                             (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
-    --no4                   Disable IPv4 Internet (not forwarding IPv4)
-                            (See Notice 1). Usually used with '-6'
+    --no4                   Disable IPv4 Internet (not forwarding IPv4).
+                            Usually used with '-6'
                             
     --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
                             (example: 'fd00:0:0:5::' or '5' shortly) 
@@ -48,7 +47,7 @@ Options:
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
-                            (default: use /etc/resolve.conf)
+                            (default: use /etc/resolv.conf)
                             (Note IPv6 addresses need '[]' around)
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
@@ -149,12 +148,6 @@ Options:
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
-
-    Notice 1:   This script assume your host's default policy won't forward
-                packets, so the script won't explictly ban forwarding in any
-                mode. In some unexpected case (eg. mistaken configurations) may
-                cause unwanted packets leakage between 2 networks, which you
-                should be aware of if you want isolated network
                 
 Examples:
     $PROGNAME -i eth1
@@ -173,7 +166,7 @@ check_empty_option(){
 
 define_global_variables(){
     # user options
-    GATEWAY=  # IPv4 address for this host
+    GATEWAY4=  # IPv4 address for this host
     PREFIX6=  # IPv6 LAN address prefix for this host
     IID6=1    # IPv6 LAN ID for this host
     IPV6=0  # enable ipv6
@@ -201,6 +194,8 @@ define_global_variables(){
     SUBNET_IFACE=  # which interface to create network
     SHARE_METHOD=nat 
     OLD_MACADDR=
+    SUBNET_NET4=
+    SUBNET_NET6=
     
 
     ##### wifi hotspot
@@ -217,7 +212,7 @@ define_global_variables(){
     IEEE80211AC=0
     REQUIREVHT=0
     IEEE80211AX=0
-    REQUIRE_HE=0
+    REQUIREHE=0
     HT_CAPAB='[HT40+]'
     VHT_CAPAB=
     VHTCHANNELWIDTH=0
@@ -241,7 +236,6 @@ define_global_variables(){
     VIRT_NAME= # name to use for virtual interface if --virt-name is used
     AP_IFACE=     # can be VWIFI_IFACE or WIFI_IFACE
     USE_IWCONFIG=0  # some device can't use iw
-    
     #######
     
     #-- to deal with info of a running instance. then will exit
@@ -251,8 +245,11 @@ define_global_variables(){
 
     # -- variables for running
     CONFDIR=
-    NM_RUNNING=0
+    IP_VERs=
     NM_UNM_LIST=  # it's called "list" but for now one interface
+    NM_PID=
+    FIREWALLD_PID=
+    TMP_FIREWALLD_ZONE=
 }
 
 parse_user_options(){
@@ -294,7 +291,7 @@ parse_user_options(){
                 
             -g)
                 shift
-                GATEWAY="$1"
+                GATEWAY4="$1"
                 shift
                 ;;
             -6)
@@ -442,7 +439,7 @@ parse_user_options(){
                 ;;
             --req-he|--require-he)
                 shift
-                REQUIRE_HE=1
+                REQUIREHE=1
                 ;;
             --req-vht|--require-vht)
                 shift
@@ -901,15 +898,39 @@ pid_watchdog() {
     
 }
 #========
-
-
+get_pid_by_dbus_name() {
+    local DBUS_NAME="$1"
+    local pid  r
+    
+    which dbus-send >/dev/null 2>&1 || return 1
+    
+    pid="$( dbus-send --system --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID string:$DBUS_NAME  2>/dev/null | grep "   uint32 " | awk '{print $2}' )"
+    r=$?
+    
+    echo "$pid"
+    return $r
+}
+is_same_netns() {
+    local pid2="$1"
+    [[ ! -f /proc/$$/ns/net ]] && return 0 # no netns feature. treat as same
+    [[ "$(readlink /proc/$$/ns/net)" == "$(readlink /proc/$pid2/ns/net)" ]] && return 0
+    return 1
+}
+#-----------------
 # only support NetworkManager >= 0.9.9
 is_nm_running() {
+    NM_PID="$(get_pid_by_dbus_name "org.freedesktop.NetworkManager")"
+    
+    [[ ! -n "$NM_PID" ]] && return 1 # not running
+    
     if (which nmcli >/dev/null 2>&1 ) && (nmcli -t -f RUNNING g 2>&1 | grep -E '^running$' >/dev/null 2>&1 ) ; then
-        echo 1
-    else
-        echo 0
+        if is_same_netns "$NM_PID"; then
+            return 0
+        fi
     fi
+    
+    NM_PID= # cancel value if treat as not running
+    return 1  # not running
 }
 
 nm_knows() {
@@ -945,21 +966,38 @@ nm_restore_manage() {
         sleep 0.5
     fi
 }
-#=========
-check_iptables()
-{
-    echo
-    iptables --version
+#-------
+is_firewalld_running() {
+    FIREWALLD_PID="$(get_pid_by_dbus_name "org.fedoraproject.FirewallD1")"
     
-    if which firewall-cmd > /dev/null 2>&1; then
-        if [[ "$(firewall-cmd --state 2>&1)" == "running" ]]; then
+    [[ ! -n "$FIREWALLD_PID" ]] && return 1 # not running
+    
+    if (which firewall-cmd >/dev/null 2>&1 ) && [[ "$(firewall-cmd --state 2>&1)" == "running" ]] ; then
+        if is_same_netns "$FIREWALLD_PID"; then
             echo "firewalld is running ($(firewall-cmd --version))"
-            echo -e "\nWARN: We haven't completed the compatibility with firewalld.\nWARN: If you see any trouble, try:\nWARN:     1) 'firewall-cmd --zone=trusted --add-interface=<SUBN_IFACE>'\nWARN:     2) disable firewalld\n" >&2 
-            # TODO
+            return 0
         fi
+    fi
+
+    FIREWALLD_PID=  # cancel value if treat as not running
+    return 1  # not running
+}
+firewalld_add_tmpzone() {
+#     TMP_FIREWALLD_ZONE="lrt${$}${SUBNET_IFACE}"
+    TMP_FIREWALLD_ZONE="trusted"
+#     firewall-cmd --new-zone=$TMP_FIREWALLD_ZONE  || die "Failed creating temporary firewalld zone"
+    echo "Adding $SUBNET_IFACE to firewalld '$TMP_FIREWALLD_ZONE' zone"
+    firewall-cmd --zone=$TMP_FIREWALLD_ZONE --add-interface=$SUBNET_IFACE >/dev/null || die "Failed adding interface to firewalld temporary zone"
+}
+firewalld_del_tmpzone() {
+    if [[ -n "$TMP_FIREWALLD_ZONE" ]];then
+        echo "Removing $SUBNET_IFACE from firewalld '$TMP_FIREWALLD_ZONE' zone"
+        firewall-cmd --zone=$TMP_FIREWALLD_ZONE --remove-interface=$SUBNET_IFACE >/dev/null
+#         firewall-cmd --delete-zone=$TMP_FIREWALLD_ZONE
     fi
 }
 
+#=========
 CUSTOM_CHAINS_4_filter=
 CUSTOM_CHAINS_4_nat=
 CUSTOM_CHAINS_6_filter=
@@ -987,6 +1025,8 @@ iptb()
     
     local FULL=""
     local ADD_TO_UNDO=1
+    
+    local arr_name  w
     
     for arr_name in CUSTOM_CHAINS_4_filter CUSTOM_CHAINS_4_nat CUSTOM_CHAINS_6_filter CUSTOM_CHAINS_6_nat
     do
@@ -1039,86 +1079,146 @@ iptb()
     return $?
 }
 
+disable_unwanted_forwarding() {
+    for iv in "${IP_VERs[@]}"; do
+        if [[ "$INTERNET_IFACE" ]]; then
+            iptb "$iv" n filter I FORWARD  \
+                -i "$SUBNET_IFACE"      ! -o "$INTERNET_IFACE" \
+                -j REJECT || die
+            iptb "$iv" n filter I FORWARD  \
+                ! -i "$INTERNET_IFACE"    -o "$SUBNET_IFACE" \
+                -j REJECT || die
+        fi
+        
+        if [[ "$SHARE_METHOD" == 'redsocks' || "$SHARE_METHOD" == 'none' \
+            || ( "$iv" -eq "4" && "$NO4" -eq 1  ) ]];then
+            iptb "$iv" n filter I FORWARD  -i "$SUBNET_IFACE"  -j REJECT || die
+            iptb "$iv" n filter I FORWARD  -o "$SUBNET_IFACE"  -j REJECT || die
+        fi
+    done
+        
+}
 start_nat() {
-    if [[ $INTERNET_IFACE ]]; then
-        IPTABLES_NAT_OUT="-o ${INTERNET_IFACE}"
-        IPTABLES_NAT_IN="-i ${INTERNET_IFACE}"
-        MASQUERADE_NOTOUT=""
-    else
-        MASQUERADE_NOTOUT="! -o ${SUBNET_IFACE}"
-    fi
+    local SUBNET_NET
+    
+    local iv
+
     echo
     echo "iptables: NAT "
-    if [[ $NO4 -eq 0 ]]; then
-        iptb 4 v nat I POSTROUTING -s ${GATEWAY%.*}.0/24 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${GATEWAY%.*}.0/24  -j MASQUERADE || die
-        iptb 4 v filter I FORWARD  -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${GATEWAY%.*}.0/24 -j ACCEPT || die
-        iptb 4 v filter I FORWARD  -o ${SUBNET_IFACE} $IPTABLES_NAT_IN  -d ${GATEWAY%.*}.0/24 -j ACCEPT || die
-    fi
-
-        iptb 6 v nat I POSTROUTING  -s ${PREFIX6}/64 $IPTABLES_NAT_OUT $MASQUERADE_NOTOUT ! -d ${PREFIX6}/64  -j MASQUERADE || die
-        iptb 6 v filter I FORWARD   -i ${SUBNET_IFACE} $IPTABLES_NAT_OUT -s ${PREFIX6}/64 -j ACCEPT || die
-        iptb 6 v filter I FORWARD   -o ${SUBNET_IFACE} $IPTABLES_NAT_IN   -d ${PREFIX6}/64 -j ACCEPT || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" && ! $NO4 -eq 0 ]] && continue
+        
+        [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
+        [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+        
+        if [[ -n "$INTERNET_IFACE" ]]; then # only one Internet interface
+            # masquerade subnet -> internet
+            iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET"  ! -d "$SUBNET_NET" \
+                -o "$INTERNET_IFACE" \
+                -j MASQUERADE || die
+                
+            # forward subnet -> internet
+            iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE"  -s "$SUBNET_NET" \
+                -o $INTERNET_IFACE \
+                -j ACCEPT || die
+            
+            # forward any -> subnet
+            iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"  -d "$SUBNET_NET"  \
+                -i "$INTERNET_IFACE" \
+                -j ACCEPT || die
+        else # any interface can be Internet
+            # masquerade subnet -> any(!subnet)
+            iptb "$iv" v nat I POSTROUTING -s "$SUBNET_NET"  ! -d "$SUBNET_NET" \
+                ! -o "$SUBNET_IFACE"  \
+                -j MASQUERADE || die
+                
+            # forward subnet -> any
+            iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE"  -s "$SUBNET_NET"  \
+                -j ACCEPT || die
+                
+            # forward any -> subnet
+            iptb "$iv" v filter I FORWARD  -o "$SUBNET_IFACE"  -d "$SUBNET_NET" \
+                -j ACCEPT || die
+        fi
+    done 
 }
 
 start_ban_lan() {
+    local arr_nets_to_protect
+    local ICMP_NAME
+    local iv  s
+    
     echo
     echo "iptables: Disallow clients to access LAN"
-    iptb 4 n filter N lrt${$}${SUBNET_IFACE}-BLF || die
-    # TODO: allow '--dhcp-dns(6)' address port 53, which can be something needed, e.g. a VPN's internal private IP
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 0.0.0.0/8 -j REJECT || die # TODO: use array
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 10.0.0.0/8 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 100.64.0.0/10 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 127.0.0.0/8 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 169.254.0.0/16 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 172.16.0.0/12 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 192.168.0.0/16 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 224.0.0.0/4 -j REJECT || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLF -d 255.255.255.255 -j REJECT || die
     
-    iptb 4 n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
-    
-    iptb 4 n filter N lrt${$}${SUBNET_IFACE}-BLI || die
-    iptb 4 v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p icmp -j REJECT || die # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
-    
-    iptb 4 n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
-    
-
-    iptb 6 n filter N lrt${$}${SUBNET_IFACE}-BLF  || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d fc00::/7 -j REJECT || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d fe80::/10 -j REJECT || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ff00::/8 -j REJECT || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::1 -j REJECT || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::/128 -j REJECT || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::ffff:0:0/96 -j REJECT || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLF -d ::ffff:0:0:0/96 -j REJECT || die
-
-    iptb 6 n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
-    
-    iptb 6 n filter N lrt${$}${SUBNET_IFACE}-BLI  || die
-    iptb 6 v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p icmpv6 -j REJECT || die
-
-    iptb 6 n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
+    for iv in "${IP_VERs[@]}"; do
+        # ban forwarding for subnet
+        iptb "$iv" n filter N lrt${$}${SUBNET_IFACE}-BLF || die
+        # TODO: allow '--dhcp-dns(6)' address port 53, which can be something needed, e.g. a VPN's internal private IP
+        if [[ "$iv" -eq "4" ]]; then
+            arr_nets_to_protect=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.168.0.0/16" "224.0.0.0/4" "255.255.255.255") 
+            ICMP_NAME="icmp"
+        elif [[ "$iv" -eq "6" ]]; then
+            arr_nets_to_protect=("fc00::/7" "fe80::/10" "ff00::/8" "::1" "::/128" "::ffff:0:0/96" "::ffff:0:0:0/96")
+            ICMP_NAME="icmpv6"
+        fi
+        for s in "${arr_nets_to_protect[@]}"; do
+            iptb "$iv" v filter I lrt${$}${SUBNET_IFACE}-BLF -d "$s" -j REJECT || die
+        done
+        iptb "$iv" n filter I FORWARD -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLF || die
+        
+        # ban input from subnet
+        iptb "$iv" n filter N lrt${$}${SUBNET_IFACE}-BLI || die
+        iptb "$iv" v filter I lrt${$}${SUBNET_IFACE}-BLI -i ${SUBNET_IFACE} ! -p "$ICMP_NAME" -j REJECT || die # ipv6 need icmp to function. TODO: maybe we can block some unneeded icmp to improve security
+        iptb "$iv" n filter I INPUT -i ${SUBNET_IFACE} -j lrt${$}${SUBNET_IFACE}-BLI || die
+    done
 
 }
 
 allow_dns_port() {
+    local SUBNET_NET
+    local GATEWAY
+    local PROTs
+    local iv  pt
+
+    
     echo
     echo "iptables: allow DNS"
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -d ${GATEWAY} -p udp -m udp --dport 53 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -d ${GATEWAY6} -p udp -m udp --dport 53 -j ACCEPT || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" ]] && GATEWAY="$GATEWAY4"
+        [[ "$iv" -eq "6" ]] && GATEWAY="$GATEWAY6"
+        
+        [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
+        [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+
+
+        PROTs=("tcp" "udp")
+        for pt in "${PROTs[@]}"; do
+            iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -d "$GATEWAY" -p "$pt" -m "$pt" --dport 53 -j ACCEPT || die
+        done
+    done 
 }
 
 
 start_catch_dns() {
+    local GATEWAY
+    local PROTs
+    local iv  pt
+
     echo
     echo "iptables: redirect DNS queries to this host"
-    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-    iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
-
-    iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p udp -m udp --dport 53 -j REDIRECT --to-ports 53 || die
-    iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} ! -d ${GATEWAY6} -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 53 || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" ]] && GATEWAY="$GATEWAY4"
+        [[ "$iv" -eq "6" ]] && GATEWAY="$GATEWAY6"
+   
+        PROTs=("tcp" "udp")
+        for pt in "${PROTs[@]}"; do
+            iptb "$iv" v nat I PREROUTING -i "$SUBNET_IFACE" ! -d "$GATEWAY" -p "$pt" -m "$pt" --dport 53 -j REDIRECT --to-ports 53 || die
+        done
+    done
 }
 
 
@@ -1132,44 +1232,41 @@ allow_dhcp() {
 
 # TODO: use 'DNAT' instead of '--to-ports' to support other IP
 start_redsocks() {
+    local SUBNET_NET
+    local arr_nets_to_ignore
+    local s iv
+    
     echo
     echo "iptables: transparent proxy non-LAN TCP and UDP(not tested) traffic to port ${TP_PORT}"
-    if [[ $NO4 -eq 0 ]]; then
-        iptb 4 n nat N lrt${$}${SUBNET_IFACE}-TP || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 0.0.0.0/8 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 10.0.0.0/8 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 100.64.0.0/10  -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 127.0.0.0/8 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 169.254.0.0/16 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 172.16.0.0/12 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 192.168.0.0/16 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 224.0.0.0/4 -j RETURN || die
-        iptb 4 n nat A lrt${$}${SUBNET_IFACE}-TP -d 255.255.255.255 -j RETURN || die
+    
+    for iv in "${IP_VERs[@]}"; do
+        [[ "$iv" -eq "4" && ! $NO4 -eq 0 ]] && continue
         
-        iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-        iptb 4 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
+        [[ "$iv" -eq "4" ]] && SUBNET_NET="$SUBNET_NET4"
+        [[ "$iv" -eq "6" ]] && SUBNET_NET="$SUBNET_NET6"
+            
+            
+        iptb "$iv" n nat N lrt${$}${SUBNET_IFACE}-TP || die
+        
+        if [[ "$iv" -eq "4" ]]; then
+            arr_nets_to_ignore=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8" "169.254.0.0/16" "172.16.0.0/12" "192.168.0.0/16" "224.0.0.0/4" "255.255.255.255")
+        elif [[ "$iv" -eq "6" ]];then
+            arr_nets_to_ignore=("fc00::/7" "fe80::/10" "ff00::/8" "::1" "::")
+        fi
+        
+        for s in "${arr_nets_to_ignore[@]}"; do
+            iptb "$iv" n nat A lrt${$}${SUBNET_IFACE}-TP -d "$s" -j RETURN || die
+        done
 
-        iptb 4 v nat I PREROUTING -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -j lrt${$}${SUBNET_IFACE}-TP || die
+        iptb "$iv" v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
+        iptb "$iv" v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
 
-        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -s ${GATEWAY%.*}.0/24 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
-    fi
+        iptb "$iv" v nat I PREROUTING -i "$SUBNET_IFACE" -s "$SUBNET_NET" -j lrt${$}${SUBNET_IFACE}-TP || die
 
-        iptb 6 n nat N lrt${$}${SUBNET_IFACE}-TP || die
-        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d fc00::/7 -j RETURN || die
-        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d fe80::/10 -j RETURN || die
-        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d ff00::/8 -j RETURN || die
-        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d ::1 -j RETURN || die
-        iptb 6 n nat A lrt${$}${SUBNET_IFACE}-TP -d :: -j RETURN || die
-
-        iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p tcp -j REDIRECT --to-ports ${TP_PORT} || die
-        iptb 6 v nat A lrt${$}${SUBNET_IFACE}-TP -p udp -j REDIRECT --to-ports ${TP_PORT} || die
-
-        iptb 6 v nat I PREROUTING -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -j lrt${$}${SUBNET_IFACE}-TP || die
-
-        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -s ${PREFIX6}/64 -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die   
-
+        
+        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+    done
 }
 
 #---------------------------------------
@@ -1272,6 +1369,8 @@ _cleanup() {
     rm -rf "$CONFDIR"
     
     ip link set down dev "${SUBNET_IFACE}"
+    
+    firewalld_del_tmpzone
     
     if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev "${VWIFI_IFACE}" del
@@ -1711,11 +1810,11 @@ decide_target_interface() {
 }
 
 decide_ip_addresses() {
-    if [[ ! -n $GATEWAY ]]; then
-        GATEWAY="$(generate_random_ip4)"
-        echo "Use random LAN IPv4 address $GATEWAY"
-    elif [[ ! "$GATEWAY" =~ "." ]]; then
-        GATEWAY="192.168.${GATEWAY}.1"
+    if [[ ! -n $GATEWAY4 ]]; then
+        GATEWAY4="$(generate_random_ip4)"
+        echo "Use random LAN IPv4 address $GATEWAY4"
+    elif [[ ! "$GATEWAY4" =~ "." ]]; then
+        GATEWAY4="192.168.${GATEWAY4}.1"
     fi
 
     if [[ $IPV6 -eq 1 && ! -n $PREFIX6 ]]; then
@@ -1727,6 +1826,10 @@ decide_ip_addresses() {
     if [[ $IPV6 -eq 1 ]]; then
         GATEWAY6="${PREFIX6}${IID6}"
     fi
+    
+    SUBNET_NET4="${GATEWAY4%.*}.0/24"
+    [[ $IPV6 -eq 1 ]] && SUBNET_NET6="${PREFIX6}/64"
+    
 }
 
 prepare_wifi_interface() {
@@ -1873,7 +1976,7 @@ write_hostapd_conf() {
         echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-    if [[ $REQUIRE_HE -eq 1 ]]; then
+    if [[ $REQUIREHE -eq 1 ]]; then
         echo "require_he=1" >> "$CONFDIR/hostapd.conf"
     fi
 
@@ -1943,6 +2046,7 @@ write_hostapd_conf() {
 }
 
 write_dnsmasq_conf() {
+    local i
     if grep "^nobody:" /etc/group >/dev/null 2>&1 ; then
         NOBODY_GROUP="nobody"
     else
@@ -1957,12 +2061,12 @@ write_dnsmasq_conf() {
 		user=nobody
 		group=$NOBODY_GROUP
 		bind-dynamic
-		listen-address=${GATEWAY}
+		listen-address=${GATEWAY4}
 		interface=$SUBNET_IFACE
 		except-interface=lo
 		no-dhcp-interface=lo
-		dhcp-range=${GATEWAY%.*}.10,${GATEWAY%.*}.250,255.255.255.0
-		dhcp-option-force=option:router,${GATEWAY}
+		dhcp-range=${GATEWAY4%.*}.10,${GATEWAY4%.*}.250,255.255.255.0
+		dhcp-option-force=option:router,${GATEWAY4}
 		#log-dhcp
 		log-facility=$CONFDIR/dnsmasq.log
 		bogus-priv
@@ -1976,7 +2080,7 @@ write_dnsmasq_conf() {
     fi
     if [[ "$DHCP_DNS" != "no" ]]; then
         if [[ "$DHCP_DNS" == "gateway" ]]; then
-            dns_offer="$GATEWAY"
+            dns_offer="$GATEWAY4"
         else
             dns_offer="$DHCP_DNS"
         fi
@@ -2052,8 +2156,9 @@ run_wifi_ap_processes() {
     echo 
     echo "Starting hostapd"
     
-    if which complain > /dev/null 2>&1; then
-        complain hostapd
+    if COMPLAIN_CMD="$(command -v aa-complain || command -v complain)"; then
+        echo "Setting hostapd to AppArmor complain mode..."
+        "$COMPLAIN_CMD" hostapd
     fi
     
     # hostapd '-P' works only when use '-B' (run in background)
@@ -2073,10 +2178,9 @@ start_dnsmasq() {
     echo 
     echo "Starting dnsmasq"
     
-    if which complain > /dev/null 2>&1; then
-        # openSUSE's apparmor does not allow dnsmasq to read files.
-        # remove restriction.
-        complain dnsmasq
+    if COMPLAIN_CMD="$(command -v aa-complain || command -v complain)"; then
+        echo "Setting dnsmasq to AppArmor complain mode..."
+        "$COMPLAIN_CMD" dnsmasq
     fi
     
     # Using '-d'(no daemon) dnsmasq will not turn into 'nobody'
@@ -2118,8 +2222,6 @@ ARGS=( "$@" )
 parse_user_options "$@"
 # TODO: detect user option conflict
 
-# check if networkManager running
-NM_RUNNING="$(is_nm_running)"
 
 TMPDIR="$(decide_tmpdir)"
 
@@ -2192,7 +2294,7 @@ fi
 #===================================================
 
 # set interface unmanaged by networkManager
-if [[ $NM_RUNNING -eq 1 ]] && nm_knows "$TARGET_IFACE"; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
+if is_nm_running && nm_knows "$TARGET_IFACE"; then # if nm knows target iface, should know subnet iface too. but need to wait until nm finds subnet iface (waiting code is in nm_set_unmanaged()
     nm_set_unmanaged "${SUBNET_IFACE}" # will write NM_UNM_LIST
 fi
 
@@ -2209,6 +2311,20 @@ dealwith_mac # setting MAC should be after setting NM unmanaged
 
 [[ $WIFI_IFACE ]] && check_rfkill_unblock_wifi
 
+
+echo
+iptables --version
+echo "Notice: Not showing all operations done to iptables rules"
+
+if [[ "$IPV6" -eq 0 ]]; then
+    IP_VERs=("4")
+else
+    IP_VERs=("4" "6")
+fi
+
+disable_unwanted_forwarding 
+
+
 # bring subnet interface up
 ip link set up dev "${SUBNET_IFACE}" || die "Failed bringing ${SUBNET_IFACE} up"
 
@@ -2216,7 +2332,7 @@ ip link set up dev "${SUBNET_IFACE}" || die "Failed bringing ${SUBNET_IFACE} up"
 [[ $WIFI_IFACE ]] && run_wifi_ap_processes
 
 # add ipv4 address to subnet interface
-ip -4 addr add ${GATEWAY}/24 broadcast ${GATEWAY%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
+ip -4 addr add ${GATEWAY4}/24 broadcast ${GATEWAY4%.*}.255 dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv4 address"
 
 set_ipv6_bits
 
@@ -2225,25 +2341,15 @@ if [[ $IPV6 -eq 1 ]] ; then
     ip -6 addr add ${GATEWAY6}/64  dev ${SUBNET_IFACE} || die "Failed setting ${SUBNET_IFACE} IPv6 address"
 fi
 
-check_iptables
-
-echo "NOTICE: Not showing all operations done to iptables rules"
-
-[[ "$NO4" -eq 1 ]] && echo -e "\nWARN: Since you're using in this mode (no IPv4 Internet), make sure you've read Notice 1\n" >&2
 
 # enable Internet sharing
 if [[ "$SHARE_METHOD" == "none" ]]; then
 
     echo "No Internet sharing"
     
-    echo -e "\nWARN: Since you're using in this mode (no Internet share), make sure you've read Notice 1\n" >&2
-    
     [[ "$BANLAN" -eq 1 ]] && start_ban_lan
     
 elif [[ "$SHARE_METHOD" == "nat" ]]; then
-
-    [[ "$INTERNET_IFACE" ]] && echo -e "\nWARN: Since you're using in this mode (specify Internet interface), make sure you've read Notice 1\n" >&2
-
     [[ "$INTERNET_IFACE" && "$dnsmasq_NO_DNS" -eq 0 ]] && echo -e "\nWARN: You specified Internet interface but this host is providing local DNS. In some unexpected case (eg. mistaken configurations), queries may leak to other interfaces, which you should be aware of.\n" >&2
     
     start_nat
@@ -2282,6 +2388,11 @@ fi
 [[ "$CATCH_DNS" -eq 1 ]] && start_catch_dns
 
 [[ $NO_DNSMASQ -eq 0 ]] && ( allow_dhcp ; start_dnsmasq )
+
+
+echo ""
+is_firewalld_running && firewalld_add_tmpzone
+
 
 echo 
 echo "== Setting up completed, now linux-router should be working =="
