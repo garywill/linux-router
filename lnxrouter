@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.8.0-unstable0
+VERSION=0.8.0-unstable1
 PROGNAME="$(basename "$0")"
 
 export LC_ALL=C
@@ -664,15 +664,22 @@ can_be_ap() {
 }
 
 can_transmit_to_channel() {
-    local IFACE CHANNEL_NUM CHANNEL_INFO
+    local IFACE CHANNEL_NUM CHANNEL_INFO CHANNEL_FREQ_FILTER
     IFACE=$1
     CHANNEL_NUM=$2
+    if [[ $FREQ_BAND == "2.4" ]]; then
+        CHANNEL_FREQ_FILTER="(24)"
+    elif [[ $FREQ_BAND -eq 5 ]]; then
+        CHANNEL_FREQ_FILTER="(5[0-8])"
+    elif [[ $FREQ_BAND -eq 6 ]]; then
+        CHANNEL_FREQ_FILTER="((59)|(6[0-9])|(70))"
+    fi
 
     if [[ $USE_IWCONFIG -eq 0 ]]; then
-        CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep -E " [0-9]+(\.[0-9]+){0,1} MHz \[${CHANNEL_NUM}\]")
+        CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep -E " ${CHANNEL_FREQ_FILTER}[0-9]+(\.[0-9]+){0,1} MHz \[${CHANNEL_NUM}\]")
         [[ -z "${CHANNEL_INFO}" ]] && return 1
-        [[ "${CHANNEL_INFO}" == *no\ IR* ]] && return 1
-        [[ "${CHANNEL_INFO}" == *disabled* ]] && return 1
+        [[ "${CHANNEL_INFO}" == *no\ IR* ]] && return 2
+        [[ "${CHANNEL_INFO}" == *disabled* ]] && return 3
         return 0
     else
         CHANNEL_NUM=$(printf '%02d' ${CHANNEL_NUM})
