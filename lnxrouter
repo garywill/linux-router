@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.7.6
+VERSION=0.8.0-unstable1
 PROGNAME="$(basename "$0")"
 
 export LC_ALL=C
@@ -123,7 +123,21 @@ Options:
                             segment. Use with '--vht-ch-width'
     --vht-seg1-ch <channel> Channel index of VHT center frequency for secondary
                             (second 80MHz) segment. Use with '--vht-ch-width 3'
-
+   
+    WiFi 6 (802.11ax) configs:
+    --wifi6                 Enable IEEE 802.11ax (HE)
+    --req-he                Require station HE (High Efficiency) mode
+    
+    --he-ch-width <index>   Index of HE channel width:
+                                0 for 20MHz or 40MHz (default)
+                                1 for 80MHz
+                                2 for 160MHz
+                                3 for 80+80MHz (Non-contigous 160MHz)    
+    --he-seg0-ch <channel>  Channel index of HE center frequency for primary
+                            segment. Use with '--he-ch-width'
+    --he-seg1-ch <channel>  Channel index of HE center frequency for secondary
+                            (second 80MHz) segment. Use with '--he-ch-width 3'
+ 
   Instance managing:
     --daemon                Run in background
     -l, --list-running      Show running instances
@@ -197,11 +211,16 @@ define_global_variables(){
     REQUIREHT=0
     IEEE80211AC=0
     REQUIREVHT=0
+    IEEE80211AX=0
+    REQUIREHE=0
     HT_CAPAB='[HT40+]'
     VHT_CAPAB=
     VHTCHANNELWIDTH=0
     VHTSEG0CHINDEX=0
     VHTSEG1CHINDEX=0
+    HECHANNELWIDTH=0
+    HESEG0CHINDEX=0
+    HESEG1CHINDEX=0
     DRIVER=nl80211
     NO_VIRT=0 # not use virtual interface
     COUNTRY=
@@ -414,6 +433,14 @@ parse_user_options(){
                 shift
                 IEEE80211AC=1
                 ;;
+            --wifi6|--ieee80211ax)
+                shift
+                IEEE80211AX=1
+                ;;
+            --req-he|--require-he)
+                shift
+                REQUIREHE=1
+                ;;
             --req-vht|--require-vht)
                 shift
                 REQUIREVHT=1
@@ -441,6 +468,21 @@ parse_user_options(){
             --vht-seg1-ch|--vht-seg1-channel)
                 shift
                 VHTSEG1CHINDEX="$1"
+                shift
+                ;;
+            --he-ch-width|--he-channel-width)
+                shift
+                HECHANNELWIDTH="$1"
+                shift
+                ;;
+            --he-seg0-ch|--he-seg0-channel)
+                shift
+                HESEG0CHINDEX="$1"
+                shift
+                ;;
+            --he-seg1-ch|--he-seg1-channel)
+                shift
+                HESEG1CHINDEX="$1"
                 shift
                 ;;
             --driver)
@@ -622,15 +664,22 @@ can_be_ap() {
 }
 
 can_transmit_to_channel() {
-    local IFACE CHANNEL_NUM CHANNEL_INFO
+    local IFACE CHANNEL_NUM CHANNEL_INFO CHANNEL_FREQ_FILTER
     IFACE=$1
     CHANNEL_NUM=$2
+    if [[ $FREQ_BAND == "2.4" ]]; then
+        CHANNEL_FREQ_FILTER="(24)"
+    elif [[ $FREQ_BAND -eq 5 ]]; then
+        CHANNEL_FREQ_FILTER="(5[0-8])"
+    elif [[ $FREQ_BAND -eq 6 ]]; then
+        CHANNEL_FREQ_FILTER="((59)|(6[0-9])|(70))"
+    fi
 
     if [[ $USE_IWCONFIG -eq 0 ]]; then
-        CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep -E " [0-9]+(\.[0-9]+){0,1} MHz \[${CHANNEL_NUM}\]")
+        CHANNEL_INFO=$(get_adapter_info "${IFACE}" | grep -E " ${CHANNEL_FREQ_FILTER}[0-9]+(\.[0-9]+){0,1} MHz \[${CHANNEL_NUM}\]")
         [[ -z "${CHANNEL_INFO}" ]] && return 1
-        [[ "${CHANNEL_INFO}" == *no\ IR* ]] && return 1
-        [[ "${CHANNEL_INFO}" == *disabled* ]] && return 1
+        [[ "${CHANNEL_INFO}" == *no\ IR* ]] && return 2
+        [[ "${CHANNEL_INFO}" == *disabled* ]] && return 3
         return 0
     else
         CHANNEL_NUM=$(printf '%02d' ${CHANNEL_NUM})
@@ -1930,6 +1979,15 @@ write_hostapd_conf() {
         echo "require_vht=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    if [[ $IEEE80211AX -eq 1 ]]; then
+        echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $REQUIREHE -eq 1 ]]; then
+        echo "require_he=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+
     if [[ -n "$VHT_CAPAB" ]]; then
         echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
     fi
@@ -1949,6 +2007,24 @@ write_hostapd_conf() {
 	if [[ $VHTSEG1CHINDEX -gt 0 ]]; then
 		cat <<- EOF >> "$CONFDIR/hostapd.conf"
 			vht_oper_centr_freq_seg1_idx=${VHTSEG1CHINDEX}
+		EOF
+	fi
+
+    if [[ $HECHANNELWIDTH -gt 0 ]]; then
+		cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			he_oper_chwidth=${HECHANNELWIDTH}
+		EOF
+	fi
+
+	if [[ $HESEG0CHINDEX -gt 0 ]]; then
+		cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			he_oper_centr_freq_seg0_idx=${HESEG0CHINDEX}
+		EOF
+	fi
+
+	if [[ $HESEG1CHINDEX -gt 0 ]]; then
+		cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			he_oper_centr_freq_seg1_idx=${HESEG1CHINDEX}
 		EOF
 	fi
 
