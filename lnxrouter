@@ -640,20 +640,26 @@ can_transmit_to_channel() {
     fi
 }
 
-# taken from iw/util.c
 ieee80211_frequency_to_channel() {
     local FREQ=$1
-    if [[ $FREQ -eq 2484 ]]; then
+
+    # 2.4G
+    if [[ $FREQ -ge 2412 && $FREQ -le 2472 ]]; then # 2.4 GHz band: Channels 1-13 (2412~2472 MHz)
+        echo $(( (FREQ - 2407) / 5 ))
+    elif [[ $FREQ -eq 2484 ]]; then # 2.4 GHz Channel 14 (2484 MHz, Japan only)
         echo 14
-    elif [[ $FREQ -lt 2484 ]]; then
-        echo $(( ($FREQ - 2407) / 5 ))
-    elif [[ $FREQ -ge 4910 && $FREQ -le 4980 ]]; then
-        echo $(( ($FREQ - 4000) / 5 ))
-    elif [[ $FREQ -le 45000 ]]; then
-        echo $(( ($FREQ - 5000) / 5 ))
-    elif [[ $FREQ -ge 58320 && $FREQ -le 64800 ]]; then
-        echo $(( ($FREQ - 56160) / 2160 ))
-    else
+
+    # 5G
+    elif [[ $FREQ -ge 5160 && $FREQ -le 5885 ]]; then # 5 GHz band: Standard Channels 36-165 (5180~5825 MHz) (extra: 32, 169-177)
+        echo $(( (FREQ - 5000) / 5 ))
+
+    # 6G
+    elif [[ $FREQ -ge 5955 && $FREQ -le 7115 ]]; then # 6 GHz band: Channels 1-233 (5955~7115 MHz), Wi-Fi 6E/7
+        echo $(( (FREQ - 5950) / 5 ))
+    elif [[ $FREQ -eq 5935 ]]; then # 6 GHz band: Special case for 5935 MHz (Channel 2, rare)
+        echo 2
+
+    else # Frequency not in supported Wi-Fi bands (2.4/5/6 GHz)
         echo 0
     fi
 }
@@ -2217,7 +2223,7 @@ fi
 
 # judge channel availability after changing country code
 if [[ $WIFI_IFACE ]] ; then
-    can_transmit_to_channel "${AP_IFACE}" ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz."
+    can_transmit_to_channel "${AP_IFACE}" ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz. (Tips: 1. Check usable channels: 'iw phy <phyX> info'.  2. Check country code then check again.  )"
 fi
 
 [[ $WIFI_IFACE ]] && write_hostapd_conf
