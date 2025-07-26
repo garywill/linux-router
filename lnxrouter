@@ -213,6 +213,7 @@ define_global_variables(){
     QR=0 # show wifi qr
     
     # script variables
+    PHY=
     VWIFI_IFACE=  # virtual wifi interface name, if created
     VIRT_NAME= # name to use for virtual interface if --virt-name is used
     AP_IFACE=     # can be VWIFI_IFACE or WIFI_IFACE
@@ -582,7 +583,6 @@ get_interface_phy_device() { # only for wifi interface
             return 0
         fi
     done
-    echo "Failed to get phy interface" >&2
     return 1
 }
 
@@ -1663,9 +1663,14 @@ daemonizing_check(){
 
 #============================
 check_wifi_settings() {
+    PHY="$(get_interface_phy_device "$WIFI_IFACE")"
+    if [[ -z "$PHY" ]]; then
+        echo "ERROR: Can't get phy of wifi interface '$WIFI_IFACE' (Did you spell the interface name right?)" >&2
+        exit 1
+    fi
 
     if ! ( which iw > /dev/null 2>&1 && iw dev "$WIFI_IFACE" info > /dev/null 2>&1 ); then
-        echo "WARN: Can't use 'iw' to operate interfce '$WIFI_IFACE', trying 'iwconfig' (not as good as 'iw') ... (Did you spell the interface name right?)" >&2
+        echo "WARN: Can't use 'iw' to operate interfce '$WIFI_IFACE', trying 'iwconfig' (not as good as 'iw') ..." >&2
         USE_IWCONFIG=1
     fi
     
@@ -2138,10 +2143,8 @@ start_dnsmasq() {
 }
 
 check_rfkill_unblock_wifi() {
-    local PHY
     if which rfkill > /dev/null 2>&1 ; then
-        PHY=$(get_interface_phy_device "${SUBNET_IFACE}")
-        [[ -n $PHY ]] && rfkill unblock $(rfkill | grep "$PHY" | awk '{print $1}') >/dev/null 2>&1
+        rfkill unblock $(rfkill | grep "$PHY" | awk '{print $1}') >/dev/null 2>&1
     fi
 }
 
@@ -2223,7 +2226,7 @@ fi
 
 # judge channel availability after changing country code
 if [[ $WIFI_IFACE ]] ; then
-    can_transmit_to_channel "${AP_IFACE}" ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz. (Tips: 1. Check usable channels: 'iw phy <phyX> info'.  2. Check country code then check again.  )"
+    can_transmit_to_channel "${AP_IFACE}" ${CHANNEL} || die "Your adapter can not transmit to channel ${CHANNEL}, frequency band ${FREQ_BAND}GHz. (Tips: 1. Check usable channels: 'iw phy $PHY info'.  2. Check country code then check again.  )"
 fi
 
 [[ $WIFI_IFACE ]] && write_hostapd_conf
