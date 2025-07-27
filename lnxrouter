@@ -670,9 +670,9 @@ can_transmit_to_channel() {
     if [[ $FREQ_BAND == "2.4" ]]; then
         CHANNEL_FREQ_FILTER="(24)"
     elif [[ $FREQ_BAND -eq 5 ]]; then
-        CHANNEL_FREQ_FILTER="(5[0-8])"
+        CHANNEL_FREQ_FILTER="(5[1-8])"
     elif [[ $FREQ_BAND -eq 6 ]]; then
-        CHANNEL_FREQ_FILTER="((59)|(6[0-9])|(70))"
+        CHANNEL_FREQ_FILTER="((59)|(6[0-9])|(7[0-1]))"
     fi
 
     if [[ $USE_IWCONFIG -eq 0 ]]; then
