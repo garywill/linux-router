@@ -1366,6 +1366,7 @@ clean_iptables() {
 
 cleanup() {
     trap "" SIGINT SIGUSR1 SIGUSR2 EXIT SIGTERM
+    touch "$CONFDIR/exit_$(date +"%Y-%m-%d_%H:%M:%S.%6N")"
     echo
     echo
     echo "Doing cleanup.. "
@@ -1411,6 +1412,8 @@ init_conf_dirs() {
     chmod 755 "$CONFDIR"
     #echo "Config dir: $CONFDIR"
     echo $$ > "$CONFDIR/pid"
+
+    touch "$CONFDIR/begin_$(date +"%Y-%m-%d_%H:%M:%S.%6N")"
 
     COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf" # config dir for all instances
     mkdir -p "$COMMON_CONFDIR"
