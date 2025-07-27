@@ -126,6 +126,8 @@ Options:
 
   Instance managing:
     --daemon                Run in background
+    --keep-confdir          Don't delete the temporary config dir after exit
+
     -l, --list-running      Show running instances
     --lc, --list-clients <id|interface>     
                             List clients of an instance. Or list neighbors of
@@ -232,6 +234,7 @@ define_global_variables(){
     NM_PID=
     FIREWALLD_PID=
     TMP_FIREWALLD_ZONE=
+    KEEP_CONFDIR=
 }
 
 parse_user_options(){
@@ -507,6 +510,10 @@ parse_user_options(){
                 shift
                 LIST_CLIENTS_ID="$1"
                 shift
+                ;;
+            --keep-confdir)
+                shift
+                KEEP_CONFDIR=1
                 ;;
 
             *)
@@ -1330,7 +1337,7 @@ _cleanup() {
 
     ip addr flush "${SUBNET_IFACE}"
     
-    rm -rf "$CONFDIR"
+    [[ ! "$KEEP_CONFDIR" -eq 1 ]] && rm -rf "$CONFDIR"
     
     ip link set down dev "${SUBNET_IFACE}"
     
