@@ -1867,6 +1867,8 @@ prepare_wifi_interface() {
             CHANNEL=36
         fi
     fi
+
+    echo "Freq band: $FREQ_BAND GHz   Channel: $CHANNEL"
 }
 
 decide_subnet_interface() {
