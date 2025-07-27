@@ -1416,14 +1416,14 @@ init_conf_dirs() {
     cd "$TMPDIR" || die "Couldn't change directory to linux-router's temporary path"
 
     CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXXXXX)" || die "Instance couldn't make config dir" # config dir for one instance
-    chmod 755 "$CONFDIR"
-    #echo "Config dir: $CONFDIR"
+    echo "Config dir: $CONFDIR"
+    chmod 755 "$CONFDIR" || die "chmod config dir failed"
     echo $$ > "$CONFDIR/pid"
 
     touch "$CONFDIR/begin_$(date +"%Y-%m-%d_%H:%M:%S.%6N")"
 
     COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf" # config dir for all instances
-    mkdir -p "$COMMON_CONFDIR"
+    mkdir -p "$COMMON_CONFDIR" || die "Failed creating common config dir"
 }
 
 #== functions to deal with running instances
