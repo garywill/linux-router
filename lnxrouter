@@ -140,6 +140,8 @@ Options:
  
   Instance managing:
     --daemon                Run in background
+    --keep-confdir          Don't delete the temporary config dir after exit
+
     -l, --list-running      Show running instances
     --lc, --list-clients <id|interface>     
                             List clients of an instance. Or list neighbors of
@@ -251,6 +253,7 @@ define_global_variables(){
     NM_PID=
     FIREWALLD_PID=
     TMP_FIREWALLD_ZONE=
+    KEEP_CONFDIR=
 }
 
 parse_user_options(){
@@ -549,6 +552,10 @@ parse_user_options(){
                 shift
                 LIST_CLIENTS_ID="$1"
                 shift
+                ;;
+            --keep-confdir)
+                shift
+                KEEP_CONFDIR=1
                 ;;
 
             *)
@@ -1379,7 +1386,7 @@ _cleanup() {
 
     ip addr flush "${SUBNET_IFACE}"
     
-    rm -rf "$CONFDIR"
+    [[ ! "$KEEP_CONFDIR" -eq 1 ]] && rm -rf "$CONFDIR"
     
     ip link set down dev "${SUBNET_IFACE}"
     
@@ -1415,6 +1422,7 @@ clean_iptables() {
 
 cleanup() {
     trap "" SIGINT SIGUSR1 SIGUSR2 EXIT SIGTERM
+    touch "$CONFDIR/exit_$(date +"%Y-%m-%d_%H:%M:%S.%6N")"
     echo
     echo
     echo "Doing cleanup.. "
@@ -1457,12 +1465,14 @@ init_conf_dirs() {
     cd "$TMPDIR" || die "Couldn't change directory to linux-router's temporary path"
 
     CONFDIR="$(mktemp -d $TMPDIR/lnxrouter.${TARGET_IFACE}.conf.XXXXXX)" || die "Instance couldn't make config dir" # config dir for one instance
-    chmod 755 "$CONFDIR"
-    #echo "Config dir: $CONFDIR"
+    echo "Config dir: $CONFDIR"
+    chmod 755 "$CONFDIR" || die "chmod config dir failed"
     echo $$ > "$CONFDIR/pid"
 
+    touch "$CONFDIR/begin_$(date +"%Y-%m-%d_%H:%M:%S.%6N")"
+
     COMMON_CONFDIR="$TMPDIR/lnxrouter_common.conf" # config dir for all instances
-    mkdir -p "$COMMON_CONFDIR"
+    mkdir -p "$COMMON_CONFDIR" || die "Failed creating common config dir"
 }
 
 #== functions to deal with running instances
@@ -1906,6 +1916,8 @@ prepare_wifi_interface() {
             CHANNEL=36
         fi
     fi
+
+    echo "Freq band: $FREQ_BAND GHz   Channel: $CHANNEL"
 }
 
 decide_subnet_interface() {

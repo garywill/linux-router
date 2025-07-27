@@ -82,9 +82,9 @@ I'm currently not packaging for any distro. If you do, open a PR and add the lin
 - iptables (or nftables with `iptables-nft` translation linked)
 - WiFi hotspot dependencies
   - hostapd
-  - iw
-  - iwconfig (you only need this if 'iw' can not recognize your adapter)
+  - iw (or iwconfig, when iw can not recognize adapter)
   - haveged (optional)
+  - crda and wireless-regdb (optional)
 
 
 
