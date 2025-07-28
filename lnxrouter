@@ -2051,7 +2051,7 @@ write_hostapd_conf() {
 		EOF
 	fi
 
-    if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]]; then
+    if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]] || [[ $IEEE80211AX -eq 1 ]]; then
         echo "wmm_enabled=1" >> "$CONFDIR/hostapd.conf"
     fi
 
