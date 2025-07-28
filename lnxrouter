@@ -137,6 +137,9 @@ Options:
                             segment. Use with '--he-ch-width'
     --he-seg1-ch <channel>  Channel index of HE center frequency for secondary
                             (second 80MHz) segment. Use with '--he-ch-width 3'
+    --he-su-bfe             Enable HE Single User Beamformee support
+    --he-su-bfr             Enable HE Single User Beamformer support
+    --he-mu-bfr             Enable HE Multi User Beamformer support
 
   Instance managing:
     --daemon                Run in background
@@ -223,6 +226,9 @@ define_global_variables(){
     HECHANNELWIDTH=0
     HESEG0CHINDEX=0
     HESEG1CHINDEX=0
+    HESUBFE=0
+    HESUBFR=0
+    HEMUBFR=0
     DRIVER=nl80211
     NO_VIRT=0 # not use virtual interface
     COUNTRY=
@@ -487,6 +493,21 @@ parse_user_options(){
             --he-seg1-ch|--he-seg1-channel)
                 shift
                 HESEG1CHINDEX="$1"
+                shift
+                ;;
+            --he-su-bfe)
+                shift
+                HESUBFE=1
+                shift
+                ;;
+            --he-su-bfr)
+                shift
+                HESUBFR=1
+                shift
+                ;;
+            --he-mu-bfr)
+                shift
+                HEMUBFR=1
                 shift
                 ;;
             --driver)
@@ -2014,7 +2035,17 @@ write_hostapd_conf() {
         echo "require_he=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    if [[ $HESUBFE -eq 1 ]]; then
+        echo "he_su_beamformee=1" >> "$CONFDIR/hostapd.conf"
+    fi
 
+    if [[ $HESUBFR -eq 1 ]]; then
+        echo "he_su_beamformer=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HEMUBFR -eq 1 ]]; then
+        echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
+    fi
 
     if [[ -n "$VHT_CAPAB" ]]; then
         echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
