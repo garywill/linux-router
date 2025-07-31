@@ -1,0 +1,10 @@
+Simplest call.
+
+calk iwconfig
+find wifi card name
+in mant cases this is wlo1 on distros like Fedora
+
+sudo ./lnxrouter --ap <yourwirelessdevice> <newhotspotname> -p <yourpassword> -g <thenewserversipaddress>
+
+-g is important otherwise the server address changes everytime.
+also, unless dhcp is properly configured you're going to have to statically address your clients.
