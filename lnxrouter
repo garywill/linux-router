@@ -932,8 +932,12 @@ get_pid_by_dbus_name() {
 }
 is_same_netns() {
     local pid2="$1"
+    local my_netns his_netns
     [[ ! -f /proc/$$/ns/net ]] && return 0 # no netns feature. treat as same
-    [[ "$(readlink /proc/$$/ns/net)" == "$(readlink /proc/$pid2/ns/net)" ]] && return 0
+    my_netns="$(readlink /proc/$$/ns/net)"
+    his_netns="$(readlink /proc/$pid2/ns/net)"
+    [[ ! -n "$his_netns" ]] && return 1 # can't find his pid or netns (maybe different pidns), treat as not same
+    [[ "$my_netns" == "$his_netns" ]] && return 0
     return 1
 }
 #-----------------
