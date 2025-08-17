@@ -103,18 +103,18 @@ Options:
     --isolate-clients       Disable wifi communication between clients
     --sta-timeout <seconds> Timeout to disconnect a no-signal client
     --no-haveged            Do not run haveged automatically when needed
-    --hs20                  (ß) Enable Hotspot 2.0
+    --hs20                  Enable Hotspot 2.0
 
   WiFi 4 (802.11n) configs:
     --wifi4                 Enable IEEE 802.11n (HT)
     --req-ht                Require station HT (High Throughput) mode
-    --ht-capab <HT caps>    HT capabilities (default: [HT40+])
+    --ht-capab <HT caps>    HT capabilities (example: '[HT40+][HT40-]')
+                            (default: '[HT40+]')
 
   WiFi 5 (802.11ac) configs:
     --wifi5                 Enable IEEE 802.11ac (VHT)
     --req-vht               Require station VHT (Very High Thoughtput) mode
-    --vht-capab <VHT caps>  VHT capabilities
-
+    --vht-capab <VHT caps>  VHT capabilities (example: '[VHT160][RXLDPC]')
     --vht-ch-width <index>  Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
@@ -126,7 +126,7 @@ Options:
                             (second 80MHz) segment. Use with '--vht-ch-width 3'
 
   WiFi 6 (802.11ax) configs:
-    --wifi6                 (ß) Enable IEEE 802.11ax (HE)
+    --wifi6                 Enable IEEE 802.11ax (HE)
     --req-he                Require station HE (High Efficiency) mode
 
     --he-ch-width <index>   Index of HE channel width:
@@ -138,13 +138,13 @@ Options:
                             segment. Use with '--he-ch-width'
     --he-seg1-ch <channel>  Channel index of HE center frequency for secondary
                             (second 80MHz) segment. Use with '--he-ch-width 3'
-    --he-su-bfe             (beta) Enable HE Single User Beamformee support
-    --he-su-bfr             (beta) Enable HE Single User Beamformer support
-    --he-mu-bfr             (beta) Enable HE Multi User Beamformer support
-    --p2ptwt                (beta) (ß) Enable Peer to Peer Target Wake Time
+    --he-su-bfe             HE Single User Beamformee support
+    --he-su-bfr             HE Single User Beamformer support
+    --he-mu-bfr             HE Multi User Beamformer support
+    --p2ptwt                Peer-to-Peer Target Wake Time support
 
-  (ß): Requires hostapd built with specific build flags enabled
-
+    Note: Some cutting-edge Wifi features strongly depends on hostapd built
+          with specific flags enabled and compatible hardware
 
   Instance managing:
     --daemon                Run in background
