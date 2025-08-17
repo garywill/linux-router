@@ -24,8 +24,9 @@ Basic features:
   - Create AP on the same interface you are getting Internet (usually require same channel)
 - Transparent proxy (redsocks)
 - Transparent DNS proxy (hijack port 53 packets)
-- Detect NetworkManager and make sure it won't interfere (handle interface (un)managed status)
-- Detect firewalld and make sure it won't interfere our (by using `trusted` zone)
+- Detect and prevent interference from following Linux system daemons:
+  - NetworkManager (handle interface (un)managed status)
+  - firewalld (use temporary `trusted` zone)
 - You can run many instances, to create many different networks. Has instances managing feature.
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
