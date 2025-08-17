@@ -217,6 +217,15 @@ define_global_variables(){
     WPA_VERSION=2
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
+    DRIVER=nl80211
+    NO_VIRT=0 # not use virtual interface
+    COUNTRY=
+    FREQ_BAND=2.4
+    NO_HAVEGED=0
+    HOSTAPD_DEBUG_ARGS=
+    USE_PSK=0
+    ISOLATE_CLIENTS=0
+    QR=0 # show wifi qr
     IDLETIMEOUT=300
 
     #wifi4
@@ -240,16 +249,6 @@ define_global_variables(){
     HESUBFR=0
     HEMUBFR=0
     HEP2PTWT=0
-
-    DRIVER=nl80211
-    NO_VIRT=0 # not use virtual interface
-    COUNTRY=
-    FREQ_BAND=2.4
-    NO_HAVEGED=0
-    HOSTAPD_DEBUG_ARGS=
-    USE_PSK=0
-    ISOLATE_CLIENTS=0
-    QR=0 # show wifi qr
 
     # script variables
     PHY=
@@ -440,6 +439,50 @@ parse_user_options(){
                 IDLETIMEOUT="$1"
                 shift
                 ;;
+            --driver)
+                shift
+                DRIVER="$1"
+                shift
+                ;;
+            --no-virt)
+                shift
+                NO_VIRT=1
+                ;;
+            --virt-name)
+                shift
+                VIRT_NAME="$1"
+                shift
+                ;;
+            --country)
+                shift
+                COUNTRY="$1"
+                shift
+                ;;
+            --freq-band)
+                shift
+                FREQ_BAND="$1"
+                shift
+                ;;
+            --no-haveged)
+                shift
+                NO_HAVEGED=1
+                ;;
+            --hostapd-debug)
+                shift
+                if [ "$1" = "1" ]; then
+                    HOSTAPD_DEBUG_ARGS="-d"
+                elif [ "$1" = "2" ]; then
+                    HOSTAPD_DEBUG_ARGS="-dd"
+                else
+                    printf "Error: argument for --hostapd-debug expected 1 or 2, got %s\n" "$1"
+                    exit 1
+                fi
+                shift
+                ;;
+            --psk)
+                shift
+                USE_PSK=1
+                ;;
             # wifi 4
             --wifi4|--ieee80211n)
                 shift
@@ -523,50 +566,7 @@ parse_user_options(){
                 shift
                 HEP2PTWT=1
                 ;;
-            --driver)
-                shift
-                DRIVER="$1"
-                shift
-                ;;
-            --no-virt)
-                shift
-                NO_VIRT=1
-                ;;
-            --virt-name)
-                shift
-                VIRT_NAME="$1"
-                shift
-                ;;
-            --country)
-                shift
-                COUNTRY="$1"
-                shift
-                ;;
-            --freq-band)
-                shift
-                FREQ_BAND="$1"
-                shift
-                ;;
-            --no-haveged)
-                shift
-                NO_HAVEGED=1
-                ;;
-            --hostapd-debug)
-                shift
-                if [ "$1" = "1" ]; then
-                    HOSTAPD_DEBUG_ARGS="-d"
-                elif [ "$1" = "2" ]; then
-                    HOSTAPD_DEBUG_ARGS="-dd"
-                else
-                    printf "Error: argument for --hostapd-debug expected 1 or 2, got %s\n" "$1"
-                    exit 1
-                fi
-                shift
-                ;;
-            --psk)
-                shift
-                USE_PSK=1
-                ;;
+            # instance managing
             --daemon)
                 shift
                 DAEMONIZE=1
@@ -2014,6 +2014,24 @@ write_hostapd_conf() {
 		EOF
     fi
 
+    if [[ -n "$PASSPHRASE" ]]; then
+        [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
+        if [[ $USE_PSK -eq 0 ]]; then
+            WPA_KEY_TYPE=passphrase
+        else
+            WPA_KEY_TYPE=psk
+        fi
+        cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			wpa=${WPA_VERSION}
+			wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
+			wpa_key_mgmt=WPA-PSK
+			wpa_pairwise=CCMP
+			rsn_pairwise=CCMP
+		EOF
+    else
+        echo "WARN: WiFi is not protected by password" >&2
+    fi
+
     if [[ $HOTSPOT20 -eq 1 ]]; then
         echo "hs20=1" >> "$CONFDIR/hostapd.conf"
     fi
@@ -2113,24 +2131,6 @@ write_hostapd_conf() {
         echo "wmm_enabled=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-    # -----------------
-    if [[ -n "$PASSPHRASE" ]]; then
-        [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
-        if [[ $USE_PSK -eq 0 ]]; then
-            WPA_KEY_TYPE=passphrase
-        else
-            WPA_KEY_TYPE=psk
-        fi
-        cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			wpa=${WPA_VERSION}
-			wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
-			wpa_key_mgmt=WPA-PSK
-			wpa_pairwise=CCMP
-			rsn_pairwise=CCMP
-		EOF
-    else
-        echo "WARN: WiFi is not protected by password" >&2
-    fi
     chmod 600 "$CONFDIR/hostapd.conf"
 }
 
