@@ -141,7 +141,7 @@ Options:
     --he-su-bfe             (beta) Enable HE Single User Beamformee support
     --he-su-bfr             (beta) Enable HE Single User Beamformer support
     --he-mu-bfr             (beta) Enable HE Multi User Beamformer support
-    --enable-twt            (beta) (ß) Enable Peer to Peer Target Wake Time support
+    --p2ptwt                (beta) (ß) Enable Peer to Peer Target Wake Time
 
   (ß): Requires hostapd built with specific build flags enabled
 
@@ -248,7 +248,7 @@ define_global_variables(){
     HESUBFE=0
     HESUBFR=0
     HEMUBFR=0
-    HEP2PTWT=0
+    P2PTWT=0
 
     # script variables
     PHY=
@@ -562,9 +562,9 @@ parse_user_options(){
                 shift
                 HEMUBFR=1
                 ;;
-            --enable-twt)
+            --p2ptwt)
                 shift
-                HEP2PTWT=1
+                P2PTWT=1
                 ;;
             # instance managing
             --daemon)
@@ -2104,10 +2104,6 @@ write_hostapd_conf() {
         echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-    if [[ $HEP2PTWT -eq 1 ]]; then
-        echo "peer_to_peer_twt=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
     if [[ $HECHANNELWIDTH -gt 0 ]]; then
 		cat <<- EOF >> "$CONFDIR/hostapd.conf"
 			he_oper_chwidth=${HECHANNELWIDTH}
@@ -2125,6 +2121,10 @@ write_hostapd_conf() {
 			he_oper_centr_freq_seg1_idx=${HESEG1CHINDEX}
 		EOF
 	fi
+
+    if [[ $P2PTWT -eq 1 ]]; then
+        echo "peer_to_peer_twt=1" >> "$CONFDIR/hostapd.conf"
+    fi
 
 	# -----------------
     if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]] || [[ $IEEE80211AX -eq 1 ]]; then
