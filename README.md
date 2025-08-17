@@ -19,6 +19,8 @@ Basic features:
   - Specify upstream DNS (kind of a plain DNS proxy)
 - IPv6 (behind NATed LAN, like IPv4)
 - Creating WiFi hotspot:
+  - Wifi 4/5/6
+  - 2.4GHz, 5GHz
   - Channel selecting
   - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
   - Create AP on the same interface you are getting Internet (usually require same channel)
@@ -313,17 +315,17 @@ Options:
                             queries to other interfaces)
     -n                      Do not provide Internet
     --ban-priv              Disallow clients to access my private network
-    
+
     -g <ip>                 This host's IPv4 address in subnet (mask is /24)
                             (example: '192.168.5.1' or '5' shortly)
     -6                      Enable IPv6 (NAT)
     --no4                   Disable IPv4 Internet (not forwarding IPv4).
                             Usually used with '-6'
-                            
-    --p6 <prefix>           Set IPv6 LAN address prefix (length 64) 
-                            (example: 'fd00:0:0:5::' or '5' shortly) 
+
+    --p6 <prefix>           Set IPv6 LAN address prefix (length 64)
+                            (example: 'fd00:0:0:5::' or '5' shortly)
                             Using this enables '-6'
-                            
+
     --dns <ip>|<port>|<ip:port>
                             DNS server's upstream DNS.
                             Use ',' to seperate multiple servers
@@ -331,37 +333,37 @@ Options:
                             (Note IPv6 addresses need '[]' around)
     --no-dns                Do not serve DNS
     --no-dnsmasq            Disable dnsmasq server (DHCP, DNS, RA)
-    --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP) 
+    --catch-dns             Transparent DNS proxy, redirect packets(TCP/UDP)
                             whose destination port is 53 to this host
     --log-dns               Show DNS query log (dnsmasq)
     --dhcp-dns <IP1[,IP2]>|no
                             Set IPv4 DNS offered by DHCP (default: this host).
     --dhcp-dns6 <IP1[,IP2]>|no
-                            Set IPv6 DNS offered by DHCP (RA) 
+                            Set IPv6 DNS offered by DHCP (RA)
                             (default: this host)
                             (Note IPv6 addresses need '[]' around)
-                            Using both above two will enable '--no-dns' 
+                            Using both above two will enable '--no-dns'
     --hostname <name>       DNS server associate this name with this host.
                             Use '-' to read name from /etc/hostname
     -d                      DNS server will take into account /etc/hosts
-    -e <hosts_file>         DNS server will take into account additional 
+    -e <hosts_file>         DNS server will take into account additional
                             hosts file
     --dns-nocache           DNS server no cache
-    
+
     --mac <MAC>             Set MAC address
     --random-mac            Use random MAC address
- 
+
     --tp <port>             Transparent proxy,
                             redirect non-LAN TCP and UDP(not tested) traffic to
                             port. (usually used with '--dns')
-    
+
   WiFi hotspot options:
     --ap <wifi interface> <SSID>
                             Create WiFi access point
-    -p, --password <password>   
+    -p, --password <password>
                             WiFi password
     --qr                    Show WiFi QR code in terminal (need qrencode)
-    
+
     --hidden                Hide access point (not broadcast SSID)
     --no-virt               Do not create virtual interface
                             Using this you can't use same wlan interface
@@ -381,44 +383,62 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
+    --sta-timeout <seconds> Timeout to disconnect a no-signal client
     --no-haveged            Do not run haveged automatically when needed
     --hs20                  Enable Hotspot 2.0
 
-    WiFi 4 (802.11n) configs:
-    --wifi4                 Enable IEEE 802.11n (HT)
-    --req-ht                Require station HT (High Throughput) mode
-    --ht-capab <HT caps>    HT capabilities (default: [HT40+])
+  WiFi 4 (802.11n) configs:
+    --wifi4                 Enable IEEE 802.11n (HT, High Throughput)
+    --ht-capab <HT caps>    HT capabilities (example: '[HT40+][HT40-]')
+                            (default: '[HT40+]')
+    --req-wifi4             Only support Wifi>=4 clients
 
-    WiFi 5 (802.11ac) configs:
-    --wifi5                 Enable IEEE 802.11ac (VHT)
-    --req-vht               Require station VHT (Very High Thoughtput) mode
-    --vht-capab <VHT caps>  VHT capabilities
-    
+  WiFi 5 (802.11ac) configs:
+    --wifi5                 Enable IEEE 802.11ac (VHT, Very High Thoughtput)
+    --vht-capab <VHT caps>  VHT capabilities (example: '[VHT160][RXLDPC]')
     --vht-ch-width <index>  Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
                                 2 for 160MHz
-                                3 for 80+80MHz (Non-contigous 160MHz)    
-    --vht-seg0-ch <channel> Channel index of VHT center frequency for primary 
+                                3 for 80+80MHz (Non-contigous 160MHz)
+    --vht-seg0-ch <channel> Channel index of VHT center frequency for primary
                             segment. Use with '--vht-ch-width'
     --vht-seg1-ch <channel> Channel index of VHT center frequency for secondary
                             (second 80MHz) segment. Use with '--vht-ch-width 3'
+    --req-wifi5             Only support Wifi>=5 clients
+
+  WiFi 6 (802.11ax) configs:
+    --wifi6                 Enable IEEE 802.11ax (HE, High Efficiency)
+    --he-ch-width <index>   Index of HE channel width:
+                                0 for 20MHz or 40MHz (default)
+                                1 for 80MHz
+                                2 for 160MHz
+                                3 for 80+80MHz (Non-contigous 160MHz)
+    --he-seg0-ch <channel>  Channel index of HE center frequency for primary
+                            segment. Use with '--he-ch-width'
+    --he-seg1-ch <channel>  Channel index of HE center frequency for secondary
+                            (second 80MHz) segment. Use with '--he-ch-width 3'
+    --he-su-bfe             HE Single User Beamformee support
+    --he-su-bfr             HE Single User Beamformer support
+    --he-mu-bfr             HE Multi User Beamformer support
+    --req-wifi6             Only support Wifi>=6 clients
+    --p2ptwt                Peer-to-Peer Target Wake Time support
+
+    Note: Some cutting-edge Wifi features strongly depends on hostapd built
+          with specific flags enabled and compatible hardware
 
   Instance managing:
     --daemon                Run in background
+    --keep-confdir          Don't delete the temporary config dir after exit
+
     -l, --list-running      Show running instances
-    --lc, --list-clients <id|interface>     
+    --lc, --list-clients <id|interface>
                             List clients of an instance. Or list neighbors of
                             an interface, even if it isn't handled by us.
                             (passive mode)
     --stop <id>             Stop a running instance
         For <id> you can use PID or subnet interface name.
         You can get them with '--list-running'
-                
-Examples:
-    lnxrouter -i eth1
-    lnxrouter --ap wlan0 MyAccessPoint -p MyPassPhrase
-    lnxrouter -i eth1 --tp <transparent-proxy> --dns <dns-proxy>
 ```
 
 </details>
