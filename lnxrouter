@@ -101,7 +101,7 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
-    --idle-timeout <time>   Idle timeout (in seconds) to disconnect a client device
+    --sta-timeout <seconds> Timeout to disconnect a no-signal client
     --no-haveged            Do not run haveged automatically when needed
     --hs20                  (ß) Enable Hotspot 2.0
 
@@ -226,7 +226,7 @@ define_global_variables(){
     USE_PSK=0
     ISOLATE_CLIENTS=0
     QR=0 # show wifi qr
-    IDLETIMEOUT=300
+    STATIMEOUT=
 
     #wifi4
     IEEE80211N=0
@@ -434,9 +434,9 @@ parse_user_options(){
                 [[ "$WPA_VERSION" == "2+1" ]] && WPA_VERSION=1+2
                 shift
                 ;;
-            --idle-timeout)
+            --sta-timeout)
                 shift
-                IDLETIMEOUT="$1"
+                STATIMEOUT="$1"
                 shift
                 ;;
             --driver)
@@ -2036,8 +2036,8 @@ write_hostapd_conf() {
         echo "hs20=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-    if [[ $IDLETIMEOUT -ne 300 ]]; then
-        echo "ap_max_inactivity=${IDLETIMEOUT}" >> "$CONFDIR/hostapd.conf"
+    if [[ -n "$STATIMEOUT" ]]; then
+        echo "ap_max_inactivity=${STATIMEOUT}" >> "$CONFDIR/hostapd.conf"
     fi
 
     # wifi4 -----------------
