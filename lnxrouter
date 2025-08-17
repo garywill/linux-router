@@ -2041,10 +2041,11 @@ write_hostapd_conf() {
 
     # wifi4 -----------------
     if [[ $IEEE80211N -eq 1 ]]; then
-        cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			ieee80211n=1
-			ht_capab=${HT_CAPAB}
-		EOF
+        echo "ieee80211n=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ -n "$HT_CAPAB" ]]; then
+        echo "ht_capab=${HT_CAPAB}" >> "$CONFDIR/hostapd.conf"
     fi
 
     if [[ $REQUIREHT -eq 1 ]]; then
