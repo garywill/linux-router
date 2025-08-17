@@ -218,17 +218,21 @@ define_global_variables(){
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
     IDLETIMEOUT=300
+
+    #wifi4
     IEEE80211N=0
     REQUIREHT=0
+    HT_CAPAB='[HT40+]'
+    #wifi5
     IEEE80211AC=0
     REQUIREVHT=0
-    IEEE80211AX=0
-    REQUIREHE=0
-    HT_CAPAB='[HT40+]'
     VHT_CAPAB=
     VHTCHANNELWIDTH=0
     VHTSEG0CHINDEX=0
     VHTSEG1CHINDEX=0
+    #wifi6
+    IEEE80211AX=0
+    REQUIREHE=0
     HECHANNELWIDTH=0
     HESEG0CHINDEX=0
     HESEG1CHINDEX=0
@@ -236,6 +240,7 @@ define_global_variables(){
     HESUBFR=0
     HEMUBFR=0
     HEP2PTWT=0
+
     DRIVER=nl80211
     NO_VIRT=0 # not use virtual interface
     COUNTRY=
@@ -385,6 +390,7 @@ parse_user_options(){
                 shift
                 ISOLATE_CLIENTS=1
                 ;;
+            # wifi ap
             --ap)
                 shift
                 WIFI_IFACE="$1"
@@ -434,6 +440,7 @@ parse_user_options(){
                 IDLETIMEOUT="$1"
                 shift
                 ;;
+            # wifi 4
             --wifi4|--ieee80211n)
                 shift
                 IEEE80211N=1
@@ -442,26 +449,19 @@ parse_user_options(){
                 shift
                 REQUIREHT=1
                 ;;
-            --wifi5|--ieee80211ac)
-                shift
-                IEEE80211AC=1
-                ;;
-            --wifi6|--ieee80211ax)
-                shift
-                IEEE80211AX=1
-                ;;
-            --req-he|--require-he)
-                shift
-                REQUIREHE=1
-                ;;
-            --req-vht|--require-vht)
-                shift
-                REQUIREVHT=1
-                ;;
             --ht-capab)
                 shift
                 HT_CAPAB="$1"
                 shift
+                ;;
+            # wifi 5
+            --wifi5|--ieee80211ac)
+                shift
+                IEEE80211AC=1
+                ;;
+            --req-vht|--require-vht)
+                shift
+                REQUIREVHT=1
                 ;;
             --vht-capab)
                 shift
@@ -482,6 +482,15 @@ parse_user_options(){
                 shift
                 VHTSEG1CHINDEX="$1"
                 shift
+                ;;
+            # wifi 6
+            --wifi6|--ieee80211ax)
+                shift
+                IEEE80211AX=1
+                ;;
+            --req-he|--require-he)
+                shift
+                REQUIREHE=1
                 ;;
             --he-ch-width|--he-channel-width)
                 shift
@@ -2009,6 +2018,11 @@ write_hostapd_conf() {
         echo "hs20=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    if [[ $IDLETIMEOUT -ne 300 ]]; then
+        echo "ap_max_inactivity=${IDLETIMEOUT}" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    # wifi4 -----------------
     if [[ $IEEE80211N -eq 1 ]]; then
         cat <<- EOF >> "$CONFDIR/hostapd.conf"
 			ieee80211n=1
@@ -2020,40 +2034,13 @@ write_hostapd_conf() {
         echo "require_ht=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    # wifi5 -----------------
     if [[ $IEEE80211AC -eq 1 ]]; then
         echo "ieee80211ac=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-    if [[ $IDLETIMEOUT -ne 300 ]]; then
-        echo "ap_max_inactivity=${IDLETIMEOUT}" >> "$CONFDIR/hostapd.conf"
-    fi
-
     if [[ $REQUIREVHT -eq 1 ]]; then
         echo "require_vht=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $IEEE80211AX -eq 1 ]]; then
-        echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $REQUIREHE -eq 1 ]]; then
-        echo "require_he=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HESUBFE -eq 1 ]]; then
-        echo "he_su_beamformee=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HESUBFR -eq 1 ]]; then
-        echo "he_su_beamformer=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HEMUBFR -eq 1 ]]; then
-        echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HEP2PTWT -eq 1 ]]; then
-        echo "peer_to_peer_twt=1" >> "$CONFDIR/hostapd.conf"
     fi
 
     if [[ -n "$VHT_CAPAB" ]]; then
@@ -2078,6 +2065,31 @@ write_hostapd_conf() {
 		EOF
 	fi
 
+	# wifi6 -----------------
+    if [[ $IEEE80211AX -eq 1 ]]; then
+        echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $REQUIREHE -eq 1 ]]; then
+        echo "require_he=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HESUBFE -eq 1 ]]; then
+        echo "he_su_beamformee=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HESUBFR -eq 1 ]]; then
+        echo "he_su_beamformer=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HEMUBFR -eq 1 ]]; then
+        echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HEP2PTWT -eq 1 ]]; then
+        echo "peer_to_peer_twt=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
     if [[ $HECHANNELWIDTH -gt 0 ]]; then
 		cat <<- EOF >> "$CONFDIR/hostapd.conf"
 			he_oper_chwidth=${HECHANNELWIDTH}
@@ -2096,10 +2108,12 @@ write_hostapd_conf() {
 		EOF
 	fi
 
+	# -----------------
     if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]] || [[ $IEEE80211AX -eq 1 ]]; then
         echo "wmm_enabled=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    # -----------------
     if [[ -n "$PASSPHRASE" ]]; then
         [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
         if [[ $USE_PSK -eq 0 ]]; then
