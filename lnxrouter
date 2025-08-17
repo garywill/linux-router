@@ -252,6 +252,7 @@ define_global_variables(){
     NM_UNM_LIST=  # it's called "list" but for now one interface
     NM_PID=
     FIREWALLD_PID=
+    OLD_FIREWALLD_ZONE=
     TMP_FIREWALLD_ZONE=
     KEEP_CONFDIR=
 }
@@ -1006,18 +1007,28 @@ is_firewalld_running() {
     FIREWALLD_PID=  # cancel value if treat as not running
     return 1  # not running
 }
-firewalld_add_tmpzone() {
-#     TMP_FIREWALLD_ZONE="lrt${$}${SUBNET_IFACE}"
-    TMP_FIREWALLD_ZONE="trusted"
-#     firewall-cmd --new-zone=$TMP_FIREWALLD_ZONE  || die "Failed creating temporary firewalld zone"
+firewalld_addto_tmptrustedzone() {
+    OLD_FIREWALLD_ZONE="$(firewall-cmd --get-zone-of-interface=$SUBNET_IFACE 2>/dev/null)"
+    [[ "$OLD_FIREWALLD_ZONE" == 'trusted' ]] && return
+
+    TMP_FIREWALLD_ZONE="trusted" # need subnet interface into this zone during linux-router working
+    if [[ -n "$OLD_FIREWALLD_ZONE" ]]; then
+        echo "Getting $SUBNET_IFACE out from firewalld zone '$OLD_FIREWALLD_ZONE' ..."
+        firewall-cmd --zone=$OLD_FIREWALLD_ZONE --remove-interface=$SUBNET_IFACE >/dev/null || die "Failed removing $SUBNET_IFACE from firewalld '$OLD_FIREWALLD_ZONE' zone"
+    fi
     echo "Adding $SUBNET_IFACE to firewalld '$TMP_FIREWALLD_ZONE' zone"
-    firewall-cmd --zone=$TMP_FIREWALLD_ZONE --add-interface=$SUBNET_IFACE >/dev/null || die "Failed adding interface to firewalld temporary zone"
+    firewall-cmd --zone=$TMP_FIREWALLD_ZONE --add-interface=$SUBNET_IFACE >/dev/null || die "Failed adding interface to firewalld temporary '$TMP_FIREWALLD_ZONE' zone"
+
 }
-firewalld_del_tmpzone() {
+firewalld_restoreoldzone() {
     if [[ -n "$TMP_FIREWALLD_ZONE" ]];then
         echo "Removing $SUBNET_IFACE from firewalld '$TMP_FIREWALLD_ZONE' zone"
         firewall-cmd --zone=$TMP_FIREWALLD_ZONE --remove-interface=$SUBNET_IFACE >/dev/null
-#         firewall-cmd --delete-zone=$TMP_FIREWALLD_ZONE
+
+        if [[ -n "$OLD_FIREWALLD_ZONE" ]]; then
+            echo "Restoring $SUBNET_IFACE to firewalld '$OLD_FIREWALLD_ZONE' zone"
+            firewall-cmd --zone=$OLD_FIREWALLD_ZONE --add-interface=$SUBNET_IFACE >/dev/null
+        fi
     fi
 }
 
@@ -1394,7 +1405,7 @@ _cleanup() {
 
     ip link set down dev "${SUBNET_IFACE}"
 
-    firewalld_del_tmpzone
+    firewalld_restoreoldzone
 
     if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev "${VWIFI_IFACE}" del
@@ -2424,7 +2435,7 @@ fi
 
 
 echo ""
-is_firewalld_running && firewalld_add_tmpzone
+is_firewalld_running && firewalld_addto_tmptrustedzone
 
 
 echo
