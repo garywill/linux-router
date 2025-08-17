@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.8.0-unstable2
+VERSION=0.8.0-unstable3
 PROGNAME="$(basename "$0")"
 
 export LC_ALL=C
@@ -101,19 +101,19 @@ Options:
                             (defaults to /etc/hostapd/hostapd.accept)
     --hostapd-debug <level> 1 or 2. Passes -d or -dd to hostapd
     --isolate-clients       Disable wifi communication between clients
+    --sta-timeout <seconds> Timeout to disconnect a no-signal client
     --no-haveged            Do not run haveged automatically when needed
     --hs20                  Enable Hotspot 2.0
 
-    WiFi 4 (802.11n) configs:
-    --wifi4                 Enable IEEE 802.11n (HT)
-    --req-ht                Require station HT (High Throughput) mode
-    --ht-capab <HT caps>    HT capabilities (default: [HT40+])
+  WiFi 4 (802.11n) configs:
+    --wifi4                 Enable IEEE 802.11n (HT, High Throughput)
+    --ht-capab <HT caps>    HT capabilities (example: '[HT40+][HT40-]')
+                            (default: '[HT40+]')
+    --req-wifi4             Only support Wifi>=4 clients
 
-    WiFi 5 (802.11ac) configs:
-    --wifi5                 Enable IEEE 802.11ac (VHT)
-    --req-vht               Require station VHT (Very High Thoughtput) mode
-    --vht-capab <VHT caps>  VHT capabilities
-
+  WiFi 5 (802.11ac) configs:
+    --wifi5                 Enable IEEE 802.11ac (VHT, Very High Thoughtput)
+    --vht-capab <VHT caps>  VHT capabilities (example: '[VHT160][RXLDPC]')
     --vht-ch-width <index>  Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
@@ -123,11 +123,10 @@ Options:
                             segment. Use with '--vht-ch-width'
     --vht-seg1-ch <channel> Channel index of VHT center frequency for secondary
                             (second 80MHz) segment. Use with '--vht-ch-width 3'
+    --req-wifi5             Only support Wifi>=5 clients
 
-    WiFi 6 (802.11ax) configs:
-    --wifi6                 Enable IEEE 802.11ax (HE)
-    --req-he                Require station HE (High Efficiency) mode
-
+  WiFi 6 (802.11ax) configs:
+    --wifi6                 Enable IEEE 802.11ax (HE, High Efficiency)
     --he-ch-width <index>   Index of HE channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
@@ -137,6 +136,14 @@ Options:
                             segment. Use with '--he-ch-width'
     --he-seg1-ch <channel>  Channel index of HE center frequency for secondary
                             (second 80MHz) segment. Use with '--he-ch-width 3'
+    --he-su-bfe             HE Single User Beamformee support
+    --he-su-bfr             HE Single User Beamformer support
+    --he-mu-bfr             HE Multi User Beamformer support
+    --req-wifi6             Only support Wifi>=6 clients
+    --p2ptwt                Peer-to-Peer Target Wake Time support
+
+    Note: Some cutting-edge Wifi features strongly depends on hostapd built
+          with specific flags enabled and compatible hardware
 
   Instance managing:
     --daemon                Run in background
@@ -209,20 +216,6 @@ define_global_variables(){
     WPA_VERSION=2
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
-    IEEE80211N=0
-    REQUIREHT=0
-    IEEE80211AC=0
-    REQUIREVHT=0
-    IEEE80211AX=0
-    REQUIREHE=0
-    HT_CAPAB='[HT40+]'
-    VHT_CAPAB=
-    VHTCHANNELWIDTH=0
-    VHTSEG0CHINDEX=0
-    VHTSEG1CHINDEX=0
-    HECHANNELWIDTH=0
-    HESEG0CHINDEX=0
-    HESEG1CHINDEX=0
     DRIVER=nl80211
     NO_VIRT=0 # not use virtual interface
     COUNTRY=
@@ -232,6 +225,29 @@ define_global_variables(){
     USE_PSK=0
     ISOLATE_CLIENTS=0
     QR=0 # show wifi qr
+    STATIMEOUT=
+
+    #wifi4
+    IEEE80211N=0
+    REQUIREHT=0
+    HT_CAPAB='[HT40+]'
+    #wifi5
+    IEEE80211AC=0
+    REQUIREVHT=0
+    VHT_CAPAB=
+    VHTCHANNELWIDTH=0
+    VHTSEG0CHINDEX=0
+    VHTSEG1CHINDEX=0
+    #wifi6
+    IEEE80211AX=0
+    REQUIREHE=0
+    HECHANNELWIDTH=0
+    HESEG0CHINDEX=0
+    HESEG1CHINDEX=0
+    HESUBFE=0
+    HESUBFR=0
+    HEMUBFR=0
+    P2PTWT=0
 
     # script variables
     PHY=
@@ -292,8 +308,6 @@ parse_user_options(){
                 SHARE_METHOD=redsocks
                 shift
                 ;;
-
-
             -g)
                 shift
                 GATEWAY4="$1"
@@ -322,7 +336,6 @@ parse_user_options(){
                 shift
                 MAC_USE_RANDOM=1
                 ;;
-
             --dns)
                 shift
                 DNS="$1"
@@ -372,12 +385,11 @@ parse_user_options(){
                 shift
                 DNS_NOCACHE=1
                 ;;
-
             --isolate-clients)
                 shift
                 ISOLATE_CLIENTS=1
                 ;;
-
+            # wifi ap
             --ap)
                 shift
                 WIFI_IFACE="$1"
@@ -394,8 +406,6 @@ parse_user_options(){
                 shift
                 QR=1
                 ;;
-
-
             --hidden)
                 shift
                 HIDDEN=1
@@ -409,7 +419,6 @@ parse_user_options(){
                 MAC_FILTER_ACCEPT="$1"
                 shift
                 ;;
-
             -c)
                 shift
                 CHANNEL="$1"
@@ -425,69 +434,9 @@ parse_user_options(){
                 [[ "$WPA_VERSION" == "2+1" ]] && WPA_VERSION=1+2
                 shift
                 ;;
-
-            --wifi4|--ieee80211n)
+            --sta-timeout)
                 shift
-                IEEE80211N=1
-                ;;
-            --req-ht|--require-ht)
-                shift
-                REQUIREHT=1
-                ;;
-            --wifi5|--ieee80211ac)
-                shift
-                IEEE80211AC=1
-                ;;
-            --wifi6|--ieee80211ax)
-                shift
-                IEEE80211AX=1
-                ;;
-            --req-he|--require-he)
-                shift
-                REQUIREHE=1
-                ;;
-            --req-vht|--require-vht)
-                shift
-                REQUIREVHT=1
-                ;;
-            --ht-capab)
-                shift
-                HT_CAPAB="$1"
-                shift
-                ;;
-            --vht-capab)
-                shift
-                VHT_CAPAB="$1"
-                shift
-                ;;
-            --vht-ch-width|--vht-channel-width)
-                shift
-                VHTCHANNELWIDTH="$1"
-                shift
-                ;;
-            --vht-seg0-ch|--vht-seg0-channel)
-                shift
-                VHTSEG0CHINDEX="$1"
-                shift
-                ;;
-            --vht-seg1-ch|--vht-seg1-channel)
-                shift
-                VHTSEG1CHINDEX="$1"
-                shift
-                ;;
-            --he-ch-width|--he-channel-width)
-                shift
-                HECHANNELWIDTH="$1"
-                shift
-                ;;
-            --he-seg0-ch|--he-seg0-channel)
-                shift
-                HESEG0CHINDEX="$1"
-                shift
-                ;;
-            --he-seg1-ch|--he-seg1-channel)
-                shift
-                HESEG1CHINDEX="$1"
+                STATIMEOUT="$1"
                 shift
                 ;;
             --driver)
@@ -504,7 +453,6 @@ parse_user_options(){
                 VIRT_NAME="$1"
                 shift
                 ;;
-
             --country)
                 shift
                 COUNTRY="$1"
@@ -535,7 +483,90 @@ parse_user_options(){
                 shift
                 USE_PSK=1
                 ;;
-
+            # wifi 4
+            --wifi4|--ieee80211n)
+                shift
+                IEEE80211N=1
+                ;;
+            --req-wifi4|--req-ht|--require-ht)
+                shift
+                REQUIREHT=1
+                ;;
+            --ht-capab)
+                shift
+                HT_CAPAB="$1"
+                shift
+                ;;
+            # wifi 5
+            --wifi5|--ieee80211ac)
+                shift
+                IEEE80211AC=1
+                ;;
+            --req-wifi5|--req-vht|--require-vht)
+                shift
+                REQUIREVHT=1
+                ;;
+            --vht-capab)
+                shift
+                VHT_CAPAB="$1"
+                shift
+                ;;
+            --vht-ch-width|--vht-channel-width)
+                shift
+                VHTCHANNELWIDTH="$1"
+                shift
+                ;;
+            --vht-seg0-ch|--vht-seg0-channel)
+                shift
+                VHTSEG0CHINDEX="$1"
+                shift
+                ;;
+            --vht-seg1-ch|--vht-seg1-channel)
+                shift
+                VHTSEG1CHINDEX="$1"
+                shift
+                ;;
+            # wifi 6
+            --wifi6|--ieee80211ax)
+                shift
+                IEEE80211AX=1
+                ;;
+            --req-wifi6|--req-he|--require-he)
+                shift
+                REQUIREHE=1
+                ;;
+            --he-ch-width|--he-channel-width)
+                shift
+                HECHANNELWIDTH="$1"
+                shift
+                ;;
+            --he-seg0-ch|--he-seg0-channel)
+                shift
+                HESEG0CHINDEX="$1"
+                shift
+                ;;
+            --he-seg1-ch|--he-seg1-channel)
+                shift
+                HESEG1CHINDEX="$1"
+                shift
+                ;;
+            --he-su-bfe)
+                shift
+                HESUBFE=1
+                ;;
+            --he-su-bfr)
+                shift
+                HESUBFR=1
+                ;;
+            --he-mu-bfr)
+                shift
+                HEMUBFR=1
+                ;;
+            --p2ptwt)
+                shift
+                P2PTWT=1
+                ;;
+            # instance managing
             --daemon)
                 shift
                 DAEMONIZE=1
@@ -558,7 +589,6 @@ parse_user_options(){
                 shift
                 KEEP_CONFDIR=1
                 ;;
-
             *)
                 echo  "Invalid parameter: $1" 1>&2
                 exit 1
@@ -779,7 +809,7 @@ show_interface_pci_info() {  # pci id / model / virtual
     [[ -n "$driver" ]] && echo "System-already-loaded driver: $driver"
     [[ -n "$device_fullname" ]] && echo "$device_fullname"
     echo ""
-    # TODO usb
+    # TODO Fix pci and usb devices
 }
 
 alloc_new_vface_name() { # only for wifi
@@ -1994,21 +2024,46 @@ write_hostapd_conf() {
 		EOF
     fi
 
+    if [[ -n "$PASSPHRASE" ]]; then
+        [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
+        if [[ $USE_PSK -eq 0 ]]; then
+            WPA_KEY_TYPE=passphrase
+        else
+            WPA_KEY_TYPE=psk
+        fi
+        cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			wpa=${WPA_VERSION}
+			wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
+			wpa_key_mgmt=WPA-PSK
+			wpa_pairwise=CCMP
+			rsn_pairwise=CCMP
+		EOF
+    else
+        echo "WARN: WiFi is not protected by password" >&2
+    fi
+
     if [[ $HOTSPOT20 -eq 1 ]]; then
         echo "hs20=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    if [[ -n "$STATIMEOUT" ]]; then
+        echo "ap_max_inactivity=${STATIMEOUT}" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    # wifi4 -----------------
     if [[ $IEEE80211N -eq 1 ]]; then
-        cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			ieee80211n=1
-			ht_capab=${HT_CAPAB}
-		EOF
+        echo "ieee80211n=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ -n "$HT_CAPAB" ]]; then
+        echo "ht_capab=${HT_CAPAB}" >> "$CONFDIR/hostapd.conf"
     fi
 
     if [[ $REQUIREHT -eq 1 ]]; then
         echo "require_ht=1" >> "$CONFDIR/hostapd.conf"
     fi
 
+    # wifi5 -----------------
     if [[ $IEEE80211AC -eq 1 ]]; then
         echo "ieee80211ac=1" >> "$CONFDIR/hostapd.conf"
     fi
@@ -2016,16 +2071,6 @@ write_hostapd_conf() {
     if [[ $REQUIREVHT -eq 1 ]]; then
         echo "require_vht=1" >> "$CONFDIR/hostapd.conf"
     fi
-
-    if [[ $IEEE80211AX -eq 1 ]]; then
-        echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $REQUIREHE -eq 1 ]]; then
-        echo "require_he=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-
 
     if [[ -n "$VHT_CAPAB" ]]; then
         echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
@@ -2049,6 +2094,27 @@ write_hostapd_conf() {
 		EOF
 	fi
 
+	# wifi6 -----------------
+    if [[ $IEEE80211AX -eq 1 ]]; then
+        echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $REQUIREHE -eq 1 ]]; then
+        echo "require_he=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HESUBFE -eq 1 ]]; then
+        echo "he_su_beamformee=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HESUBFR -eq 1 ]]; then
+        echo "he_su_beamformer=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+    if [[ $HEMUBFR -eq 1 ]]; then
+        echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
     if [[ $HECHANNELWIDTH -gt 0 ]]; then
 		cat <<- EOF >> "$CONFDIR/hostapd.conf"
 			he_oper_chwidth=${HECHANNELWIDTH}
@@ -2067,27 +2133,15 @@ write_hostapd_conf() {
 		EOF
 	fi
 
+    if [[ $P2PTWT -eq 1 ]]; then
+        echo "peer_to_peer_twt=1" >> "$CONFDIR/hostapd.conf"
+    fi
+
+	# -----------------
     if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]] || [[ $IEEE80211AX -eq 1 ]]; then
         echo "wmm_enabled=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-    if [[ -n "$PASSPHRASE" ]]; then
-        [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
-        if [[ $USE_PSK -eq 0 ]]; then
-            WPA_KEY_TYPE=passphrase
-        else
-            WPA_KEY_TYPE=psk
-        fi
-        cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			wpa=${WPA_VERSION}
-			wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
-			wpa_key_mgmt=WPA-PSK
-			wpa_pairwise=CCMP
-			rsn_pairwise=CCMP
-		EOF
-    else
-        echo "WARN: WiFi is not protected by password" >&2
-    fi
     chmod 600 "$CONFDIR/hostapd.conf"
 }
 
