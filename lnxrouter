@@ -106,14 +106,13 @@ Options:
     --hs20                  Enable Hotspot 2.0
 
   WiFi 4 (802.11n) configs:
-    --wifi4                 Enable IEEE 802.11n (HT)
-    --req-ht                Require station HT (High Throughput) mode
+    --wifi4                 Enable IEEE 802.11n (HT, High Throughput)
     --ht-capab <HT caps>    HT capabilities (example: '[HT40+][HT40-]')
                             (default: '[HT40+]')
+    --req-wifi4             Only support Wifi>=4 clients
 
   WiFi 5 (802.11ac) configs:
-    --wifi5                 Enable IEEE 802.11ac (VHT)
-    --req-vht               Require station VHT (Very High Thoughtput) mode
+    --wifi5                 Enable IEEE 802.11ac (VHT, Very High Thoughtput)
     --vht-capab <VHT caps>  VHT capabilities (example: '[VHT160][RXLDPC]')
     --vht-ch-width <index>  Index of VHT channel width:
                                 0 for 20MHz or 40MHz (default)
@@ -124,11 +123,10 @@ Options:
                             segment. Use with '--vht-ch-width'
     --vht-seg1-ch <channel> Channel index of VHT center frequency for secondary
                             (second 80MHz) segment. Use with '--vht-ch-width 3'
+    --req-wifi5             Only support Wifi>=5 clients
 
   WiFi 6 (802.11ax) configs:
-    --wifi6                 Enable IEEE 802.11ax (HE)
-    --req-he                Require station HE (High Efficiency) mode
-
+    --wifi6                 Enable IEEE 802.11ax (HE, High Efficiency)
     --he-ch-width <index>   Index of HE channel width:
                                 0 for 20MHz or 40MHz (default)
                                 1 for 80MHz
@@ -141,6 +139,7 @@ Options:
     --he-su-bfe             HE Single User Beamformee support
     --he-su-bfr             HE Single User Beamformer support
     --he-mu-bfr             HE Multi User Beamformer support
+    --req-wifi6             Only support Wifi>=6 clients
     --p2ptwt                Peer-to-Peer Target Wake Time support
 
     Note: Some cutting-edge Wifi features strongly depends on hostapd built
@@ -488,7 +487,7 @@ parse_user_options(){
                 shift
                 IEEE80211N=1
                 ;;
-            --req-ht|--require-ht)
+            --req-wifi4|--req-ht|--require-ht)
                 shift
                 REQUIREHT=1
                 ;;
@@ -502,7 +501,7 @@ parse_user_options(){
                 shift
                 IEEE80211AC=1
                 ;;
-            --req-vht|--require-vht)
+            --req-wifi5|--req-vht|--require-vht)
                 shift
                 REQUIREVHT=1
                 ;;
@@ -531,7 +530,7 @@ parse_user_options(){
                 shift
                 IEEE80211AX=1
                 ;;
-            --req-he|--require-he)
+            --req-wifi6|--req-he|--require-he)
                 shift
                 REQUIREHE=1
                 ;;
