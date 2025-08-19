@@ -207,8 +207,9 @@ define_global_variables(){
     CHANNEL=default
     HOTSPOT20=0 # For enabling Hotspot 2.0
     WPA_VERSION=2
-    MAC_FILTER=0
+    MAC_FILTER=3  # 3 is not valid
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
+    MAC_FILTER_DENY=/etc/hostapd/hostapd.deny
     IEEE80211N=0
     REQUIREHT=0
     IEEE80211AC=0
@@ -399,13 +400,34 @@ parse_user_options(){
                 shift
                 HIDDEN=1
                 ;;
-            --mac-filter)
-                shift
-                MAC_FILTER=1
-                ;;
+
             --mac-filter-accept)
                 shift
-                MAC_FILTER_ACCEPT="$1"
+                if [ "$MAC_FILTER_TYPE" == "deny" ]
+                then
+                    printf "ERROR: Can't use --mac-filter-accept and --mac-filter-deny together.\n"
+                    exit 1
+                fi
+                MAC_FILTER_TYPE=accept
+                MAC_FILTER=1
+                MAC_FILTER_FILE=$MAC_FILTER_ACCEPT
+                ;;
+
+            --mac-filter-deny)
+                shift
+                if [ "$MAC_FILTER_TYPE" == "accept" ]
+                then
+                    printf "ERROR: Can't use --mac-filter-accept and --mac-filter-deny together.\n"
+                    exit 1
+                fi
+                MAC_FILTER_TYPE=deny
+                MAC_FILTER=0
+                MAC_FILTER_FILE=$MAC_FILTER_DENY
+                ;;
+
+            --mac-filter-file)
+                shift
+                MAC_FILTER_FILE="$1"
                 shift
                 ;;
 
@@ -1978,8 +2000,15 @@ write_hostapd_conf() {
 
     if [[ $MAC_FILTER -eq 1 ]]; then
         cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			macaddr_acl=${MAC_FILTER}
-			accept_mac_file=${MAC_FILTER_ACCEPT}
+			macaddr_acl=1
+			accept_mac_file=${MAC_FILTER_FILE}
+		EOF
+    fi
+
+    if [[ $MAC_FILTER -eq 0 ]]; then
+        cat <<- EOF >> "$CONFDIR/hostapd.conf"
+			macaddr_acl=0
+			deny_mac_file=${MAC_FILTER_FILE}
 		EOF
     fi
 
