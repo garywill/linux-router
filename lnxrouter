@@ -2050,94 +2050,78 @@ write_hostapd_conf() {
         echo "ap_max_inactivity=${STATIMEOUT}" >> "$CONFDIR/hostapd.conf"
     fi
 
-    # wifi4 -----------------
-    if [[ $IEEE80211N -eq 1 ]]; then
+    if [[ $IEEE80211N -eq 1 ]]; then # wifi4
         echo "ieee80211n=1" >> "$CONFDIR/hostapd.conf"
+
+        if [[ -n "$HT_CAPAB" ]]; then
+            echo "ht_capab=${HT_CAPAB}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $REQUIREHT -eq 1 ]]; then
+            echo "require_ht=1" >> "$CONFDIR/hostapd.conf"
+        fi
     fi
 
-    if [[ -n "$HT_CAPAB" ]]; then
-        echo "ht_capab=${HT_CAPAB}" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $REQUIREHT -eq 1 ]]; then
-        echo "require_ht=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    # wifi5 -----------------
-    if [[ $IEEE80211AC -eq 1 ]]; then
+    if [[ $IEEE80211AC -eq 1 ]]; then # wifi5
         echo "ieee80211ac=1" >> "$CONFDIR/hostapd.conf"
+
+        if [[ -n "$VHT_CAPAB" ]]; then
+            echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $VHTCHANNELWIDTH -gt 0 ]]; then
+            echo "vht_oper_chwidth=${VHTCHANNELWIDTH}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $VHTSEG0CHINDEX -gt 0 ]]; then
+            echo "vht_oper_centr_freq_seg0_idx=${VHTSEG0CHINDEX}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $VHTSEG1CHINDEX -gt 0 ]]; then
+            echo "vht_oper_centr_freq_seg1_idx=${VHTSEG1CHINDEX}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $REQUIREVHT -eq 1 ]]; then
+            echo "require_vht=1" >> "$CONFDIR/hostapd.conf"
+        fi
     fi
 
-    if [[ $REQUIREVHT -eq 1 ]]; then
-        echo "require_vht=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ -n "$VHT_CAPAB" ]]; then
-        echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
-    fi
-
-	if [[ $VHTCHANNELWIDTH -gt 0 ]]; then
-		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			vht_oper_chwidth=${VHTCHANNELWIDTH}
-		EOF
-	fi
-
-	if [[ $VHTSEG0CHINDEX -gt 0 ]]; then
-		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			vht_oper_centr_freq_seg0_idx=${VHTSEG0CHINDEX}
-		EOF
-	fi
-
-	if [[ $VHTSEG1CHINDEX -gt 0 ]]; then
-		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			vht_oper_centr_freq_seg1_idx=${VHTSEG1CHINDEX}
-		EOF
-	fi
-
-	# wifi6 -----------------
-    if [[ $IEEE80211AX -eq 1 ]]; then
+    if [[ $IEEE80211AX -eq 1 ]]; then # wifi6
         echo "ieee80211ax=1" >> "$CONFDIR/hostapd.conf"
+
+        if [[ $REQUIREHE -eq 1 ]]; then
+            echo "require_he=1" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $HESUBFE -eq 1 ]]; then
+            echo "he_su_beamformee=1" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $HESUBFR -eq 1 ]]; then
+            echo "he_su_beamformer=1" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $HEMUBFR -eq 1 ]]; then
+            echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $HECHANNELWIDTH -gt 0 ]]; then
+            echo "he_oper_chwidth=${HECHANNELWIDTH}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $HESEG0CHINDEX -gt 0 ]]; then
+            echo "he_oper_centr_freq_seg0_idx=${HESEG0CHINDEX}" >> "$CONFDIR/hostapd.conf"
+        fi
+
+        if [[ $HESEG1CHINDEX -gt 0 ]]; then
+            echo "he_oper_centr_freq_seg1_idx=${HESEG1CHINDEX}" >> "$CONFDIR/hostapd.conf"
+        fi
     fi
-
-    if [[ $REQUIREHE -eq 1 ]]; then
-        echo "require_he=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HESUBFE -eq 1 ]]; then
-        echo "he_su_beamformee=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HESUBFR -eq 1 ]]; then
-        echo "he_su_beamformer=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HEMUBFR -eq 1 ]]; then
-        echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
-    fi
-
-    if [[ $HECHANNELWIDTH -gt 0 ]]; then
-		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			he_oper_chwidth=${HECHANNELWIDTH}
-		EOF
-	fi
-
-	if [[ $HESEG0CHINDEX -gt 0 ]]; then
-		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			he_oper_centr_freq_seg0_idx=${HESEG0CHINDEX}
-		EOF
-	fi
-
-	if [[ $HESEG1CHINDEX -gt 0 ]]; then
-		cat <<- EOF >> "$CONFDIR/hostapd.conf"
-			he_oper_centr_freq_seg1_idx=${HESEG1CHINDEX}
-		EOF
-	fi
 
     if [[ $P2PTWT -eq 1 ]]; then
         echo "peer_to_peer_twt=1" >> "$CONFDIR/hostapd.conf"
     fi
 
-	# -----------------
     if [[ $IEEE80211N -eq 1 ]] || [[ $IEEE80211AC -eq 1 ]] || [[ $IEEE80211AX -eq 1 ]]; then
         echo "wmm_enabled=1" >> "$CONFDIR/hostapd.conf"
     fi
