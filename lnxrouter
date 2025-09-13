@@ -105,13 +105,13 @@ Options:
     --no-haveged            Do not run haveged automatically when needed
     --hs20                  Enable Hotspot 2.0
 
-  WiFi 4 (802.11n) configs:
+  WiFi 4 (802.11n) configs (2.4G/5GHz):  (default: not enable)
     --wifi4                 Enable IEEE 802.11n (HT, High Throughput)
-    --ht-capab <HT caps>    HT capabilities (example: '[HT40+][HT40-]')
+    --ht-capab <HT caps>    HT capabilities (example: '[HT40+][DSSS_CCK-40]')
                             (default: '[HT40+]')
     --req-wifi4             Only support Wifi>=4 clients
 
-  WiFi 5 (802.11ac) configs:
+  WiFi 5 (802.11ac) configs (5GHz):  (default: not enable)
     --wifi5                 Enable IEEE 802.11ac (VHT, Very High Thoughtput)
     --vht-capab <VHT caps>  VHT capabilities (example: '[VHT160][RXLDPC]')
     --vht-ch-width <index>  Index of VHT channel width:
@@ -125,7 +125,7 @@ Options:
                             (second 80MHz) segment. Use with '--vht-ch-width 3'
     --req-wifi5             Only support Wifi>=5 clients
 
-  WiFi 6 (802.11ax) configs:
+  WiFi 6 (802.11ax) configs (2.4G/5GHz):  (default: not enable)
     --wifi6                 Enable IEEE 802.11ax (HE, High Efficiency)
     --he-ch-width <index>   Index of HE channel width:
                                 0 for 20MHz or 40MHz (default)
