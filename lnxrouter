@@ -720,7 +720,7 @@ can_transmit_to_channel() {
         [[ "${CHANNEL_INFO}" == *disabled* ]] && return 3
         return 0
     else
-        CHANNEL_NUM=$(printf '%02d' ${CHANNEL_NUM})
+        CHANNEL_NUM="$(printf '%02d' "${CHANNEL_NUM}")"
         CHANNEL_INFO=$(iwlist "${IFACE}" channel | grep -E "Channel[[:blank:]]${CHANNEL_NUM}[[:blank:]]?:")
         [[ -z "${CHANNEL_INFO}" ]] && return 1
         return 0
@@ -766,7 +766,7 @@ is_unicast_macaddr() {
     local x
     x=$(echo "$1" | cut -d: -f1)
     x=$(printf '%d' "0x${x}")
-    [[ $(expr $x % 2) -eq 0 ]]
+    [[ $(expr "$x" % 2) -eq 0 ]]
 }
 
 get_interface_mac() {
@@ -874,15 +874,15 @@ generate_random_mac() {
 is_ip4_lan_range_available() { # checks 192.168.x.x
     ( ip -4 address | grep "inet 192\.168\.$1\." > /dev/null 2>&1 ) && return 1
     ( ip -4 route | grep "^192\.168\.$1\." > /dev/null 2>&1 ) && return 1
-    ( ip -4 route get 192.168.$1.0 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
-    ( ip -4 route get 192.168.$1.255 2>&1 | grep  -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
+    ( ip -4 route get "192.168.$1.0" 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
+    ( ip -4 route get "192.168.$1.255" 2>&1 | grep  -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
     return 1
 }
 is_ip6_lan_range_available() {  # checks fdxx::
     ( ip -6 address | grep -i "inet6 fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
     ( ip -6 route | grep -i "^fd$1:$2$3:$4$5:$6$7:" > /dev/null 2>&1 ) && return 1
-    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:: 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
-    ( ip -6 route get fd$1:$2$3:$4$5:$6$7:ffff:ffff:ffff:ffff 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
+    ( ip -6 route get "fd$1:$2$3:$4$5:$6$7::" 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 ) && \
+    ( ip -6 route get "fd$1:$2$3:$4$5:$6$7:ffff:ffff:ffff:ffff" 2>&1 | grep -E "\bvia\b|\bunreachable\b" > /dev/null 2>&1 )  && return 0
     return 1
 }
 
@@ -924,7 +924,7 @@ haveged_watchdog() {
             elif ! pidof haveged > /dev/null 2>&1; then # TODO judge zombie ?
                 echo "Low entropy detected, starting haveged" 1>&2
                 # boost low-entropy
-                haveged -w 1024 -p $COMMON_CONFDIR/haveged.pid
+                haveged -w 1024 -p "$COMMON_CONFDIR/haveged.pid"
             fi
         fi
         sleep 2
@@ -965,8 +965,8 @@ is_same_netns() {
     local pid2="$1"
     local my_netns his_netns
     [[ ! -f /proc/$$/ns/net ]] && return 0 # no netns feature. treat as same
-    my_netns="$(readlink /proc/$$/ns/net)"
-    his_netns="$(readlink /proc/$pid2/ns/net)"
+    my_netns="$(readlink "/proc/$$/ns/net")"
+    his_netns="$(readlink "/proc/$pid2/ns/net")"
     [[ ! -n "$his_netns" ]] && return 1 # can't find his pid or netns (maybe different pidns), treat as not same
     [[ "$my_netns" == "$his_netns" ]] && return 0
     return 1
@@ -1015,7 +1015,7 @@ nm_set_managed() {
     NM_UNM_LIST=
 }
 nm_restore_manage() {
-    if [[ $NM_UNM_LIST ]]; then
+    if [[ -n "$NM_UNM_LIST" ]]; then
         echo "Restore $NM_UNM_LIST managed by NetworkManager"
         nm_set_managed "$NM_UNM_LIST"
         sleep 0.5
@@ -1185,7 +1185,7 @@ start_nat() {
 
             # forward subnet -> internet
             iptb "$iv" v filter I FORWARD  -i "$SUBNET_IFACE"  -s "$SUBNET_NET" \
-                -o $INTERNET_IFACE \
+                -o "$INTERNET_IFACE" \
                 -j ACCEPT || die
 
             # forward any -> subnet
@@ -1291,8 +1291,8 @@ allow_dhcp() {
     echo
     echo "iptables: allow dhcp"
 
-    iptb 4 v filter I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 67 -j ACCEPT || die
-    iptb 6 v filter I INPUT -i ${SUBNET_IFACE} -p udp -m udp --dport 547 -j ACCEPT || die
+    iptb 4 v filter I INPUT -i "${SUBNET_IFACE}" -p udp -m udp --dport 67 -j ACCEPT || die
+    iptb 6 v filter I INPUT -i "${SUBNET_IFACE}" -p udp -m udp --dport 547 -j ACCEPT || die
 }
 
 # TODO: use 'DNAT' instead of '--to-ports' to support other IP
@@ -1329,8 +1329,8 @@ start_redsocks() {
         iptb "$iv" v nat I PREROUTING -i "$SUBNET_IFACE" -s "$SUBNET_NET" -j lrt${$}${SUBNET_IFACE}-TP || die
 
 
-        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p tcp -m tcp --dport ${TP_PORT}  -j ACCEPT || die
-        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p udp -m udp --dport ${TP_PORT}  -j ACCEPT || die
+        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p tcp -m tcp --dport "${TP_PORT}"  -j ACCEPT || die
+        iptb "$iv" v filter I INPUT -i "$SUBNET_IFACE" -s "$SUBNET_NET" -p udp -m udp --dport "${TP_PORT}"  -j ACCEPT || die
     done
 }
 
@@ -1437,7 +1437,7 @@ _cleanup() {
 
     firewalld_restoreoldzone
 
-    if [[ $VWIFI_IFACE ]]; then # the subnet interface (virtual wifi interface) will be removed
+    if [[ -n "$VWIFI_IFACE" ]]; then # the subnet interface (virtual wifi interface) will be removed
         iw dev "${VWIFI_IFACE}" del
         dealloc_vface_name "$VWIFI_IFACE"
     fi
