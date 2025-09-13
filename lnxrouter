@@ -236,14 +236,14 @@ define_global_variables(){
     REQUIREVHT=0
     VHT_CAPAB=
     VHTCHANNELWIDTH=0
-    VHTSEG0CHINDEX=0
-    VHTSEG1CHINDEX=0
+    VHTSEG0CHINDEX=
+    VHTSEG1CHINDEX=
     #wifi6
     IEEE80211AX=0
     REQUIREHE=0
     HECHANNELWIDTH=0
-    HESEG0CHINDEX=0
-    HESEG1CHINDEX=0
+    HESEG0CHINDEX=
+    HESEG1CHINDEX=
     HESUBFE=0
     HESUBFR=0
     HEMUBFR=0
@@ -2069,15 +2069,15 @@ write_hostapd_conf() {
             echo "vht_capab=${VHT_CAPAB}" >> "$CONFDIR/hostapd.conf"
         fi
 
-        if [[ $VHTCHANNELWIDTH -gt 0 ]]; then
+        if [[ -n "$VHTCHANNELWIDTH" ]]; then
             echo "vht_oper_chwidth=${VHTCHANNELWIDTH}" >> "$CONFDIR/hostapd.conf"
         fi
 
-        if [[ $VHTSEG0CHINDEX -gt 0 ]]; then
+        if [[ -n "$VHTSEG0CHINDEX" ]]; then
             echo "vht_oper_centr_freq_seg0_idx=${VHTSEG0CHINDEX}" >> "$CONFDIR/hostapd.conf"
         fi
 
-        if [[ $VHTSEG1CHINDEX -gt 0 ]]; then
+        if [[ -n "$VHTSEG1CHINDEX" ]]; then
             echo "vht_oper_centr_freq_seg1_idx=${VHTSEG1CHINDEX}" >> "$CONFDIR/hostapd.conf"
         fi
 
@@ -2105,15 +2105,15 @@ write_hostapd_conf() {
             echo "he_mu_beamformer=1" >> "$CONFDIR/hostapd.conf"
         fi
 
-        if [[ $HECHANNELWIDTH -gt 0 ]]; then
+        if [[ -n "$HECHANNELWIDTH" ]]; then
             echo "he_oper_chwidth=${HECHANNELWIDTH}" >> "$CONFDIR/hostapd.conf"
         fi
 
-        if [[ $HESEG0CHINDEX -gt 0 ]]; then
+        if [[ -n "$HESEG0CHINDEX" ]]; then
             echo "he_oper_centr_freq_seg0_idx=${HESEG0CHINDEX}" >> "$CONFDIR/hostapd.conf"
         fi
 
-        if [[ $HESEG1CHINDEX -gt 0 ]]; then
+        if [[ -n "$HESEG1CHINDEX" ]]; then
             echo "he_oper_centr_freq_seg1_idx=${HESEG1CHINDEX}" >> "$CONFDIR/hostapd.conf"
         fi
     fi
