@@ -4,7 +4,7 @@ Set Linux as router in one command. Able to provide Internet, or create WiFi hot
 
 It wraps `iptables`, `dnsmasq` etc. stuff. Use in one command, restore in one command or by `control-c` (or even by closing terminal window).
 
-[Linux-Router News & Developer Notes 📰](https://github.com/garywill/linux-router/issues/28) | [More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
+[More tools and projects 🛠️](https://garywill.github.io) | [🍻 Buy me a coffee ❤️](https://github.com/garywill/receiving/blob/master/receiving_methods.md)
 
 
 ## Features
@@ -19,17 +19,17 @@ Basic features:
   - Specify upstream DNS (kind of a plain DNS proxy)
 - IPv6 (behind NATed LAN, like IPv4)
 - Creating WiFi hotspot:
-  - Wifi 4/5/6
+  - Wifi 3/4/5/6
   - 2.4GHz, 5GHz
   - Channel selecting
   - Choose encryptions: WPA2/WPA, WPA2, WPA, No encryption
-  - Create AP on the same interface you are getting Internet (usually require same channel)
+  - Create AP on the same interface you are getting Internet (Need hardware support. Usually require same channel)
 - Transparent proxy (redsocks)
 - Transparent DNS proxy (hijack port 53 packets)
 - Detect and prevent interference from following Linux system daemons:
   - NetworkManager (handle interface (un)managed status)
   - firewalld (use temporary `trusted` zone)
-- You can run many instances, to create many different networks. Has instances managing feature.
+- Instances managing. You can run multiple instances, to create different sub-networks.
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
 
@@ -463,7 +463,7 @@ Visit [**my homepage** 🏡](https://garywill.github.io) to see **more tools and
 > 
 > 🥂 ( ^\_^) o自自o (^_^ ) 🍻
 
-🤝 Bisides, thank [create_ap](https://github.com/oblique/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. (See `history` branch for how I modified create_ap). 🤝 Also thank those who contributed to that project.
+🤝 Bisides, thank [create_ap](https://github.com/oblique/create_ap) by [oblique](https://github.com/oblique). This script was forked from create\_ap. Now they are quite different. 🤝 Also thank those people who contributed to that project.
 
 👨‍💻 You can be contributor, too! 
 
