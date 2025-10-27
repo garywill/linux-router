@@ -35,35 +35,40 @@ Basic features:
 
 ### Useful in these situations
 
+```mermaid
+flowchart LR
+    Internet -- eth0/wlan0 --> Linux
+    Linux -- wlanX --> AP
+    AP --> Client1
+    AP --> Client2
 ```
-Internet----(eth0/wlan0)-Linux-(wlanX)AP
-                                       |--client
-                                       |--client
-```
+```mermaid
+flowchart LR
+    WiFi_AP["WiFi AP (no DHCP)"] -- wlan1 --> Linux
+    Linux -- eth0/wlan0 (DHCP) --> Internet
+    WiFi_AP --> Client1
+    WiFi_AP --> Client2
 
 ```
-                                    Internet
-WiFi AP(no DHCP)                        |
-    |----(wlan1)-Linux-(eth0/wlan0)------
-    |           (DHCP)
-    |--client
-    |--client
+
+```mermaid
+flowchart LR
+    Switch -- eth1 --> Linux
+    Linux -- eth0/wlan0 --> Internet
+    Switch --> Client1
+    Switch --> Client2
 ```
 
-```
-                                    Internet
- Switch                                 |
-    |---(eth1)-Linux-(eth0/wlan0)--------
-    |--client
-    |--client
+```mermaid
+flowchart LR
+    Internet -- eth0/wlan0 --> Linux
+    Linux -- eth1 --> Another_PC["Another PC"]
 ```
 
-```
-Internet----(eth0/wlan0)-Linux-(eth1)------Another PC
-```
-
-```
-Internet----(eth0/wlan0)-Linux-(virtual interface)-----VM/container
+```mermaid
+flowchart LR
+    Internet -- eth0/wlan0 --> Linux
+    Linux -- virtual interface --> VM["VM / Container"]
 ```
 
 ## Install
