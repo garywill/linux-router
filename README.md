@@ -444,7 +444,17 @@ Options:
 
 </details>
 
-## What changes are done to Linux system
+## System admins should know
+
+### Take care of concurrency
+
+Linux-router script is home-made, not enterprise-level.
+
+- You can run multiple linux-router instances and they work simultaneous, as long as you start/stop **one by one**, not all at once. We **can't ensure** its locks covering 100% race condition edge cases.
+
+- Use it after the system has fully booted. When you’re manually (re)starting/stopping some network-related services, stop linux-router first, otherwise those services (flushing iptables or some) may break linux-router's setup. 
+
+### What changes are done to Linux system
 
 On exit of a linux-router instance, script **will do cleanup**, i.e. undo most changes to system. Though, **some** changes (if needed) will **not** be undone, which are:
 
