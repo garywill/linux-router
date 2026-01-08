@@ -92,8 +92,8 @@ Options:
                             (example: US)
     --freq-band <GHz>       Set frequency band: 2.4 or 5 (default: 2.4)
     --driver                Choose your WiFi adapter driver (default: nl80211)
-    -w <WPA version>        '2' for WPA2, '1' for WPA, '1+2' for both
-                            (default: 2)
+    --enalbe-wpa1           Enable WPA 1 (LEGACY)
+    -w <WPA version>        '2' for WPA2, '3' for WPA3, '2+3' for both, '0' to disable both (Default=2)
     --psk                   Use 64 hex digits pre-shared-key instead of
                             passphrase
     --mac-filter            Enable WiFi hotspot MAC address filtering
@@ -213,7 +213,9 @@ define_global_variables(){
     WIFI_IFACE=
     CHANNEL=default
     HOTSPOT20=0 # For enabling Hotspot 2.0
-    WPA_VERSION=2
+    WPA1_ENABLE=0 # For enabling WPA1, marked as legacy
+    WPA2_ENABLE=1 # Enable WPA2 PSK-Personal
+    WPA3_ENABLE=0 # Enable WPA3 SAE
     MAC_FILTER=0
     MAC_FILTER_ACCEPT=/etc/hostapd/hostapd.accept
     DRIVER=nl80211
@@ -428,10 +430,31 @@ parse_user_options(){
                 shift
                 HOTSPOT20=1
                 ;;
+            --enable-wpa1)
+                shift
+                WPA1_ENABLE=1
+                ;;
             -w)
                 shift
-                WPA_VERSION="$1"
-                [[ "$WPA_VERSION" == "2+1" ]] && WPA_VERSION=1+2
+                # WPA_VERSION="$1"
+                # [[ "$WPA_VERSION" == "2+3" ]] && WPA_VERSION=2+3
+                case "$1" in
+                    "2")
+                        WPA2_ENABLE=1
+                        ;;
+                    "3")
+                        WPA2_ENABLE=0
+                        WPA3_ENABLE=1
+                        ;;
+                    "2+3"|"3+2")
+                        WPA2_ENABLE=1
+                        WPA3_ENABLE=1
+                        ;;
+                    "0")
+                        WPA2_ENABLE=0
+                        WPA3_ENABLE=0
+                        ;;
+                esac
                 shift
                 ;;
             --sta-timeout)
@@ -1840,7 +1863,7 @@ check_wifi_settings() {
     fi
 
     if [[ $(get_adapter_kernel_module "${WIFI_IFACE}") =~ ^rtl[0-9].*$ ]]; then
-        if [[ $WPA_VERSION == '1' || $WPA_VERSION == '1+2' ]]; then
+        if [[ $WPA1_ENABLE == '1' ]]; then
             echo "WARN: Realtek drivers usually have problems with WPA1, WPA2 is recommended" >&2
         fi
         echo "WARN: If AP doesn't work, read https://github.com/oblique/create_ap/blob/master/howto/realtek.md" >&2
@@ -2025,7 +2048,22 @@ write_hostapd_conf() {
     fi
 
     if [[ -n "$PASSPHRASE" ]]; then
-        [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
+        # [[ "$WPA_VERSION" == "1+2" ]] && WPA_VERSION=3
+        WPA_VERSION=0
+        WPA_KEYMGMT=""
+        if [[ $WPA1_ENABLE -eq 1 ]]; then
+            WPA_VERSION=$(($WPA_VERSION + 1))
+        fi
+        if [[ $WPA2_ENABLE -eq 1 || $WPA3_ENABLE -eq 1 ]]; then
+            WPA_VERSION=$(($WPA_VERSION + 2))
+        fi
+        if [[ $WPA1_ENABLE -eq 1 || $WPA2_ENABLE -eq 1 ]]; then
+            WPA_KEYMGMT+="WPA-PSK"
+        fi
+        if [[ $WPA3_ENABLE -eq 1 ]]; then
+            [[ ! -z "$WPA_KEYMGMT" ]] && WPA_KEYMGMT+=" "
+            WPA_KEYMGMT+="SAE"
+        fi
         if [[ $USE_PSK -eq 0 ]]; then
             WPA_KEY_TYPE=passphrase
         else
@@ -2034,7 +2072,7 @@ write_hostapd_conf() {
         cat <<- EOF >> "$CONFDIR/hostapd.conf"
 			wpa=${WPA_VERSION}
 			wpa_${WPA_KEY_TYPE}=${PASSPHRASE}
-			wpa_key_mgmt=WPA-PSK
+			wpa_key_mgmt=${WPA_KEYMGMT}
 			wpa_pairwise=CCMP
 			rsn_pairwise=CCMP
 		EOF
