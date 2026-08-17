@@ -2520,6 +2520,7 @@ fi
 echo ""
 is_firewalld_running && firewalld_addto_tmptrustedzone
 
+systemd-notify --ready --status="Active on WiFi network ${SSID}" || true
 
 echo
 echo "== Setting up completed, now linux-router should be working =="
