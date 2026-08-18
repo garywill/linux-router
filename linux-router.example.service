@@ -1,0 +1,22 @@
+[Unit]
+Description=Linux Router
+After=network.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+User=root
+EnvironmentFile=/etc/linux-router.conf
+ExecStart=/usr/local/bin/lnxrouter \
+    --country "$AP_WIFI_COUNTRY" \
+    -n --no-virt \
+    --dns "$AP_DNS_ADDRESS" \
+    -g "$AP_NET_GATEWAY" \
+    -c "$AP_WIFI_CHANNEL" --wifi4 --ht-capab "" \
+    --ap "$AP_WIFI_INTERFACE" "$AP_WIFI_ESSID" \
+    -p "$AP_WIFI_PSK"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
