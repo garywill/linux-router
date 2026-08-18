@@ -29,6 +29,7 @@ Basic features:
 - Detect and prevent interference from following Linux system daemons:
   - NetworkManager (handle interface (un)managed status)
   - firewalld (use temporary `trusted` zone)
+- Integration with systemd
 - Instances managing. You can run multiple instances, to create different sub-networks.
 
 **For many other features, see below [CLI usage](#cli-usage-and-other-features)**
@@ -465,6 +466,18 @@ On exit of a linux-router instance, script **will do cleanup**, i.e. undo most c
 4. Kernel module `nf_nat_pptp` loaded
 5. The wifi device which is used to create hotspot is `rfkill unblock`ed
 6. WiFi country code, if user assigns
+
+### Integration with systemd
+
+A sample systemd service unit file is available and can be used to run this program as a service.  
+The service unit can be designed and written in a number of ways, but the important thing to make
+systemd readiness notification work, is these specific lines:
+
+```
+[Service]
+Type=notify
+NotifyAccess=all
+```
 
 ## Meet contributor(s) and become one of them
 
